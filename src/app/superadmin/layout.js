@@ -18,7 +18,8 @@ export default function SuperAdminLayout({ children }) {
     if (stored === 'true') { setAuthed(true); setLoading(false); return; }
 
     supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!session) { router.push('/login'); setLoading(false); return; }
+      if (!session) { setLoading(false); return; } // Show password form, don't redirect
+
       const email = session.user.email?.toLowerCase();
       if (email === 'irfangull2288@gmail.com') {
         sessionStorage.setItem(SESSION_KEY, 'true');
