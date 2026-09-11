@@ -1,10 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
 
 // Full Ontario municipalities list
 const ONTARIO_CITIES = [
@@ -137,6 +133,10 @@ async function scrapeRealtorCa(city) {
 }
 
 export async function GET(req) {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY
+  );
   const authHeader = req.headers.get("authorization");
   const secret = process.env.CRON_SECRET || "RealtyPropFlow-cron-2026";
   if (authHeader !== `Bearer ${secret}`) {
