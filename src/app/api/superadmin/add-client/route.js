@@ -114,10 +114,10 @@ export async function POST(req) {
       name: `${name}'s Assistant`,
       industry: 'Real Estate',
       website_url: website_url,
-      welcome_message: `Hi there! 👋 I'm ${name}'s AI assistant. How can I help you today?`,
-      system_prompt: `You are an AI assistant for ${name}. Be helpful and professional.`,
-      primary_color: '#4F46E5',
-      bot_avatar: '🤖',
+      welcome_message: `Hi there! 👋 I'm ${name}'s AI Real Estate Advisor. Looking to buy, rent, or invest in UAE or Saudi Arabia? How can I assist you today?`,
+      system_prompt: `You are a premier Gulf Real Estate AI assistant for ${name}. Guide clients with luxury properties, off-plan investments, rentals, and market insights across UAE and Saudi Arabia.`,
+      primary_color: '#D4A843',
+      bot_avatar: '🌴',
       status: 'Active'
     }).select().single();
 
