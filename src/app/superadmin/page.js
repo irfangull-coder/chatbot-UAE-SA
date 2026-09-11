@@ -1,1137 +1,543 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 
-export default function AdminPage() {
+// ─── helpers ──────────────────────────────────────────────────────────────────
+const fmt = n => (n ?? 0).toLocaleString();
+const timeAgo = d => {
+  if (!d) return '—';
+  const s = Math.floor((Date.now() - new Date(d)) / 1000);
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+};
+const COUNTRIES = ['UAE', 'Saudi Arabia'];
+const CITIES = {
+  UAE: ['Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman', 'Ras Al Khaimah', 'Fujairah'],
+  'Saudi Arabia': ['Riyadh', 'Jeddah', 'Dammam', 'Al Khobar', 'Makkah', 'Madinah', 'Tabuk'],
+};
+const PROP_TYPES = ['Apartment', 'Villa', 'Townhouse', 'Penthouse', 'Duplex', 'Compound', 'Studio'];
+
+export default function GulfSuperAdmin() {
+  const [tab, setTab] = useState('overview');
+  const [stats, setStats] = useState(null);
+  const [properties, setProperties] = useState([]);
+  const [propTotal, setPropTotal] = useState(0);
+  const [propPage, setPropPage] = useState(1);
+  const [propFilter, setPropFilter] = useState({ country: '', city: '', type: '' });
+  const [cache, setCache] = useState([]);
   const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [deletingUser, setDeletingUser] = useState(null);
+  const [bots, setBots] = useState([]);
+  const [loading, setLoading] = useState({});
+  const [toast, setToast] = useState(null);
+  const [addPropModal, setAddPropModal] = useState(false);
+  const [delPropId, setDelPropId] = useState(null);
   const [expandedUser, setExpandedUser] = useState(null);
-  const [userBots, setUserBots] = useState({}); // { userId: [bots] }
-  const [botsLoading, setBotsLoading] = useState({});
-  const [searchQuery, setSearchQuery] = useState('');
-  const [revealedPasswords, setRevealedPasswords] = useState({});
-  const [copiedPasswordId, setCopiedPasswordId] = useState(null);
+  const [userBots, setUserBots] = useState({});
+  const [search, setSearch] = useState('');
 
-  // Add Client Modal State
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [addForm, setAddForm] = useState({ name: '', email: '', password: '', phone: '', website_url: '' });
-  const [isAdding, setIsAdding] = useState(false);
-  const [addResult, setAddResult] = useState(null);
+  // blank property form
+  const emptyProp = { country: 'UAE', city: 'Dubai', area_district: '', property_type: 'Apartment', bedrooms: 2, bathrooms: 2, area_sqft: 1200, price: '', currency: 'AED', source_url: '', agent_name: '', images: [] };
+  const [propForm, setPropForm] = useState(emptyProp);
 
-  // Embed Code Modal
-  const [codeModal, setCodeModal] = useState(null); // { bot }
+  // toast helper
+  const showToast = (msg, ok = true) => {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 3000);
+  };
 
-  // Assign Plan Modal
-  const [assignModal, setAssignModal] = useState(null); // { userId, email }
-  const [assignForm, setAssignForm] = useState({ plan: 'starter', cycle: 'monthly', note: '' });
-  const [isAssigning, setIsAssigning] = useState(false);
-  const [assignResult, setAssignResult] = useState(null);
+  const setLoad = (key, val) => setLoading(p => ({ ...p, [key]: val }));
 
-  useEffect(() => {
-    fetchUsers();
+  // ── fetch stats ──────────────────────────────────────────────────────────────
+  const fetchStats = useCallback(async () => {
+    setLoad('stats', true);
+    const r = await fetch('/api/gulf-admin/stats');
+    if (r.ok) setStats(await r.json());
+    setLoad('stats', false);
   }, []);
 
-  const getTrialInfo = (user) => {
-    if (!user.trial_ends_at) return null;
-    const now = new Date();
-    const trialEnd = new Date(user.trial_ends_at);
-    const diffMs = trialEnd - now;
-    const daysLeft = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-    if (daysLeft > 0) return { daysLeft, expired: false };
-    return { daysLeft: 0, expired: true };
+  // ── fetch properties ─────────────────────────────────────────────────────────
+  const fetchProperties = useCallback(async (page = 1, filter = propFilter) => {
+    setLoad('props', true);
+    const p = new URLSearchParams({ page, ...filter });
+    const r = await fetch(`/api/gulf-admin/properties?${p}`);
+    if (r.ok) {
+      const d = await r.json();
+      setProperties(d.properties);
+      setPropTotal(d.total);
+    }
+    setLoad('props', false);
+  }, [propFilter]);
+
+  // ── fetch cache ──────────────────────────────────────────────────────────────
+  const fetchCache = useCallback(async () => {
+    setLoad('cache', true);
+    const r = await fetch('/api/gulf-admin/cache');
+    if (r.ok) setCache((await r.json()).cache);
+    setLoad('cache', false);
+  }, []);
+
+  // ── fetch users ──────────────────────────────────────────────────────────────
+  const fetchUsers = useCallback(async () => {
+    setLoad('users', true);
+    const { data } = await supabase.from('users_subscription').select('*').order('created_at', { ascending: false });
+    setUsers(data || []);
+    setLoad('users', false);
+  }, []);
+
+  // ── fetch bots for user ──────────────────────────────────────────────────────
+  const fetchUserBots = async userId => {
+    const { data } = await supabase.from('bots').select('*').eq('user_id', userId);
+    setUserBots(p => ({ ...p, [userId]: data || [] }));
   };
 
-  const resetTrialTo15Days = async (userId) => {
-    const res = await fetch('/api/superadmin/reset-trial', {
+  // initial load
+  useEffect(() => { fetchStats(); }, [fetchStats]);
+  useEffect(() => { if (tab === 'properties') fetchProperties(1); }, [tab, fetchProperties]);
+  useEffect(() => { if (tab === 'cache') fetchCache(); }, [tab, fetchCache]);
+  useEffect(() => { if (tab === 'users') fetchUsers(); }, [tab, fetchUsers]);
+
+  // ── add property ─────────────────────────────────────────────────────────────
+  const addProperty = async () => {
+    setLoad('addProp', true);
+    const r = await fetch('/api/gulf-admin/properties', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, days: 15 })
+      body: JSON.stringify({ ...propForm, images: propForm.images || [] }),
     });
-    const data = await res.json();
-    if (data.success) {
-      alert('Trial reset to 15 days from today ✅');
-      fetchUsers();
+    if (r.ok) {
+      showToast('Property added ✅');
+      setAddPropModal(false);
+      setPropForm(emptyProp);
+      fetchProperties(propPage);
+      fetchStats();
     } else {
-      alert('Error: ' + (data.error || 'Could not reset trial'));
+      const e = await r.json();
+      showToast(e.error || 'Failed', false);
     }
+    setLoad('addProp', false);
   };
 
-  const fetchUsers = async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('users_subscription')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (!error && data) setUsers(data);
-    setLoading(false);
+  // ── delete property ──────────────────────────────────────────────────────────
+  const deleteProperty = async id => {
+    setDelPropId(id);
+    const r = await fetch('/api/gulf-admin/properties', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    if (r.ok) { showToast('Deleted ✅'); fetchProperties(propPage); fetchStats(); }
+    else showToast('Delete failed', false);
+    setDelPropId(null);
   };
 
-  const fetchBotsForUser = async (userId) => {
-    setBotsLoading(prev => ({ ...prev, [userId]: true }));
-    const { data } = await supabase
-      .from('bots')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
-    setUserBots(prev => ({ ...prev, [userId]: data || [] }));
-    setBotsLoading(prev => ({ ...prev, [userId]: false }));
-  };
-
-  const toggleUserExpand = (userId) => {
-    if (expandedUser === userId) {
-      setExpandedUser(null);
-    } else {
-      setExpandedUser(userId);
-      if (!userBots[userId]) fetchBotsForUser(userId);
-    }
-  };
-
-  const togglePasswordReveal = (userId, e) => {
-    e?.stopPropagation();
-    setRevealedPasswords(prev => ({
-      ...prev,
-      [userId]: !prev[userId]
-    }));
-  };
-
-  const copyPassword = (password, userId, e) => {
-    e?.stopPropagation();
-    if (!password) return;
-    navigator.clipboard.writeText(password);
-    setCopiedPasswordId(userId);
-    setTimeout(() => setCopiedPasswordId(null), 2000);
-  };
-
-  const toggleBotStatus = async (bot) => {
-    const newStatus = bot.status === 'Active' ? 'Inactive' : 'Active';
-    setUserBots(prev => ({
-      ...prev,
-      [bot.user_id]: prev[bot.user_id].map(b => b.id === bot.id ? { ...b, status: newStatus } : b)
-    }));
-    
-    try {
-      const res = await fetch('/api/superadmin/toggle-bot', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ botId: bot.id, status: newStatus })
-      });
-      if (!res.ok) throw new Error('Update failed');
-    } catch (err) {
-      console.error(err);
-      setUserBots(prev => ({
-        ...prev,
-        [bot.user_id]: prev[bot.user_id].map(b => b.id === bot.id ? { ...b, status: bot.status } : b)
-      }));
-      alert('Failed to update bot status. Check logs.');
-    }
-  };
-
-  const toggleUserStatus = async (userId, currentStatus, e) => {
-    e?.stopPropagation();
-    const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
-    setUsers(users.map(u => u.user_id === userId ? { ...u, status: newStatus } : u));
-    
-    try {
-      const res = await fetch('/api/superadmin/toggle-user', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, status: newStatus })
-      });
-      if (!res.ok) throw new Error('Update failed');
-    } catch (err) {
-      console.error(err);
-      setUsers(users.map(u => u.user_id === userId ? { ...u, status: currentStatus } : u));
-      alert('Failed to update user status. Check logs.');
-    }
-  };
-
-  const deleteUser = async (userId, email, e) => {
-    e?.stopPropagation();
-    const confirmed = window.confirm(`⚠️ Are you sure you want to DELETE "${email || userId}"?\n\nThis will permanently delete:\n• All their chatbots\n• Their subscription\n• Their account\n\nThis action CANNOT be undone!`);
+  // ── clear cache ───────────────────────────────────────────────────────────────
+  const clearCache = async (city_key = null) => {
+    const confirmed = window.confirm(city_key ? `Clear cache for "${city_key}"?` : 'Clear ALL city cache?');
     if (!confirmed) return;
-
-    setDeletingUser(userId);
-    try {
-      const res = await fetch('/api/superadmin/delete-user', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setUsers(prev => prev.filter(u => u.user_id !== userId));
-        setUserBots(prev => { const n = { ...prev }; delete n[userId]; return n; });
-        if (expandedUser === userId) setExpandedUser(null);
-      } else {
-        alert('Error: ' + (data.error || 'Could not delete user'));
-      }
-    } catch (e) {
-      alert('Network error. Please try again.');
-    }
-    setDeletingUser(null);
+    setLoad('clearCache', true);
+    const r = await fetch('/api/gulf-admin/cache', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(city_key ? { city_key } : { clearAll: true }),
+    });
+    if (r.ok) { showToast(city_key ? 'Cache cleared ✅' : 'All cache cleared ✅'); fetchCache(); }
+    else showToast('Failed to clear', false);
+    setLoad('clearCache', false);
   };
 
-  const handlePayWithStripe = async (e) => {
-    e?.preventDefault();
-    if (!assignModal) return;
-    setIsAssigning(true);
-    setAssignResult(null);
-    try {
-      const res = await fetch('/api/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          plan: assignForm.plan === 'premium' || assignForm.plan === 'pro' ? 'pro' : 'starter',
-          cycle: assignForm.cycle,
-          userId: assignModal.userId,
-          userEmail: assignModal.email || 'no-email@realtypropflow.com'
-        })
-      });
-      const data = await res.json();
-      if (data.checkoutUrl) {
-        window.location.href = data.checkoutUrl;
-      } else {
-        setAssignResult({ type: 'error', message: data.error || 'Failed to start Stripe checkout' });
-      }
-    } catch (err) {
-      setAssignResult({ type: 'error', message: 'Network error.' });
-    }
-    setIsAssigning(false);
+  // ── reset trial ───────────────────────────────────────────────────────────────
+  const resetTrial = async userId => {
+    const r = await fetch('/api/superadmin/reset-trial', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, days: 15 }),
+    });
+    if ((await r.json()).success) { showToast('Trial reset to 15 days ✅'); fetchUsers(); }
+    else showToast('Reset failed', false);
   };
 
-  const handleAssignPlan = async (e) => {
-    e?.preventDefault();
-    if (!assignModal) return;
-    setIsAssigning(true);
-    setAssignResult(null);
-    try {
-      const res = await fetch('/api/superadmin/assign-plan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: assignModal.userId, ...assignForm })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setAssignResult({ type: 'success', plan: data.plan, endDate: data.endDate });
-        setUsers(prev => prev.map(u => u.user_id === assignModal.userId ? { ...u, status: 'Active' } : u));
-        fetchUsers();
-      } else {
-        setAssignResult({ type: 'error', message: data.error || 'Failed to assign plan' });
-      }
-    } catch (err) {
-      setAssignResult({ type: 'error', message: 'Network error.' });
-    }
-    setIsAssigning(false);
+  // ── toggle user status ────────────────────────────────────────────────────────
+  const toggleUser = async (userId, currentStatus) => {
+    const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
+    await fetch('/api/superadmin/toggle-user', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, status: newStatus }),
+    });
+    fetchUsers();
   };
 
-  const handleAddClient = async (e) => {
-    e.preventDefault();
-    setIsAdding(true);
-    setAddResult(null);
-    try {
-      const res = await fetch('/api/superadmin/add-client', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(addForm)
-      });
-      const data = await res.json();
-      if (data.success) {
-        setAddResult({ type: 'success', bot: data.bot });
-        fetchUsers();
-        setAddForm({ name: '', email: '', password: '', phone: '', website_url: '' });
-      } else {
-        const debugInfo = data.debug ? `\n\nDebug: ${data.debug.join(' → ')}` : '';
-        setAddResult({ type: 'error', message: (data.error || 'Failed to add client') + debugInfo });
-      }
-    } catch (err) {
-      setAddResult({ type: 'error', message: 'Network error. Please try again.' });
-    }
-    setIsAdding(false);
+  // ── delete user ───────────────────────────────────────────────────────────────
+  const deleteUser = async (userId, email) => {
+    if (!window.confirm(`Delete "${email}"? This cannot be undone!`)) return;
+    const r = await fetch('/api/superadmin/delete-user', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    });
+    if (r.ok) { showToast('User deleted ✅'); fetchUsers(); }
+    else showToast('Delete failed', false);
   };
 
-  // Filter users by search
-  const filteredUsers = users.filter(user => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      (user.email && user.email.toLowerCase().includes(q)) ||
-      (user.name && user.name.toLowerCase().includes(q)) ||
-      (user.website_url && user.website_url.toLowerCase().includes(q)) ||
-      (user.plan && user.plan.toLowerCase().includes(q))
-    );
-  });
+  const trialDays = user => {
+    if (!user.trial_ends_at) return null;
+    const d = Math.ceil((new Date(user.trial_ends_at) - Date.now()) / 86400000);
+    return d;
+  };
 
-  const activeCount = users.filter(u => u.status === 'Active').length;
-  const premiumCount = users.filter(u => ['pro', 'premium'].includes((u.plan || '').toLowerCase())).length;
+  const filteredUsers = users.filter(u =>
+    !search || (u.email || '').toLowerCase().includes(search.toLowerCase()) || (u.name || '').toLowerCase().includes(search.toLowerCase())
+  );
 
+  // ═══════════════════════ RENDER ═══════════════════════════════════════════════
   return (
-    <div style={{ paddingBottom: '60px' }}>
-      {/* ── Assign Plan Modal ──────────────────────────────────── */}
-      {assignModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: '20px' }}>
-          <div style={{ backgroundColor: 'white', borderRadius: '20px', padding: '32px', width: '100%', maxWidth: '480px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', border: '1px solid #E2E8F0' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: '#0F172A' }}>💳 Assign / Pay Plan</h2>
-                <p style={{ margin: '3px 0 0', fontSize: '12px', color: '#64748B' }}>{assignModal.email}</p>
-              </div>
-              <button onClick={() => { setAssignModal(null); setAssignResult(null); }} style={{ background: '#F1F5F9', border: 'none', width: '32px', height: '32px', borderRadius: '50%', fontSize: '14px', cursor: 'pointer', color: '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
-            </div>
-
-            {assignResult?.type === 'success' ? (
-              <div style={{ textAlign: 'center', padding: '20px 0' }}>
-                <div style={{ fontSize: '48px', marginBottom: '12px' }}>🎉</div>
-                <h3 style={{ fontSize: '18px', color: '#065F46', margin: '0 0 8px', fontWeight: '800' }}>Plan Assigned Successfully!</h3>
-                <p style={{ fontSize: '13px', color: '#64748B' }}>Plan: <strong style={{ color: '#0F172A', textTransform: 'capitalize' }}>{assignResult.plan}</strong></p>
-                <p style={{ fontSize: '13px', color: '#64748B' }}>Valid until: <strong style={{ color: '#0F172A' }}>{new Date(assignResult.endDate).toLocaleDateString()}</strong></p>
-                <button onClick={() => { setAssignModal(null); setAssignResult(null); }} style={{ width: '100%', marginTop: '20px', padding: '12px', backgroundColor: '#4F46E5', color: 'white', border: 'none', borderRadius: '10px', fontWeight: '700', cursor: 'pointer', fontSize: '14px' }}>Done</button>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {assignResult?.type === 'error' && (
-                  <div style={{ backgroundColor: '#FEF2F2', color: '#991B1B', padding: '12px', borderRadius: '10px', fontSize: '13px', border: '1px solid #FECACA' }}>
-                    {assignResult.message}
-                  </div>
-                )}
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '6px', color: '#0F172A' }}>Select Plan Tier</label>
-                  <select
-                    value={assignForm.plan}
-                    onChange={e => setAssignForm({ ...assignForm, plan: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '12px 14px',
-                      borderRadius: '10px',
-                      border: '1.5px solid #CBD5E1',
-                      fontSize: '14px',
-                      fontWeight: '600',
-                      color: '#0F172A',
-                      outline: 'none',
-                      backgroundColor: '#FFFFFF',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <option value="starter" style={{ color: '#0F172A', backgroundColor: '#FFFFFF' }}>📦 Starter / Standard ($29/mo)</option>
-                    <option value="pro" style={{ color: '#0F172A', backgroundColor: '#FFFFFF' }}>⭐ Pro / Premium ($79/mo)</option>
-                    <option value="enterprise" style={{ color: '#0F172A', backgroundColor: '#FFFFFF' }}>🚀 Enterprise ($199/mo)</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '6px', color: '#0F172A' }}>Select Billing Cycle</label>
-                  <select
-                    value={assignForm.cycle}
-                    onChange={e => setAssignForm({ ...assignForm, cycle: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '12px 14px',
-                      borderRadius: '10px',
-                      border: '1.5px solid #CBD5E1',
-                      fontSize: '14px',
-                      fontWeight: '600',
-                      color: '#0F172A',
-                      outline: 'none',
-                      backgroundColor: '#FFFFFF',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <option value="monthly" style={{ color: '#0F172A', backgroundColor: '#FFFFFF' }}>📅 Monthly (Auto-renews or 30 days)</option>
-                    <option value="yearly" style={{ color: '#0F172A', backgroundColor: '#FFFFFF' }}>📆 Yearly (365 days)</option>
-                  </select>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '10px' }}>
-                  {/* Option 1: Free / Direct Assign */}
-                  <button
-                    type="button"
-                    onClick={handleAssignPlan}
-                    disabled={isAssigning}
-                    style={{
-                      width: '100%',
-                      padding: '13px',
-                      background: 'linear-gradient(135deg, #4F46E5 0%, #3B82F6 100%)',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '10px',
-                      fontWeight: '800',
-                      cursor: isAssigning ? 'not-allowed' : 'pointer',
-                      fontSize: '14px',
-                      opacity: isAssigning ? 0.7 : 1,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px',
-                      boxShadow: '0 4px 12px rgba(79,70,229,0.3)'
-                    }}
-                  >
-                    <span>✓</span> {isAssigning ? 'Processing...' : 'Confirm Plan (Free / Admin Override)'}
-                  </button>
-
-                  {/* Option 2: Pay with Stripe */}
-                  <button
-                    type="button"
-                    onClick={handlePayWithStripe}
-                    disabled={isAssigning}
-                    style={{
-                      width: '100%',
-                      padding: '13px',
-                      background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '10px',
-                      fontWeight: '800',
-                      cursor: isAssigning ? 'not-allowed' : 'pointer',
-                      fontSize: '14px',
-                      opacity: isAssigning ? 0.7 : 1,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px',
-                      boxShadow: '0 4px 12px rgba(99,102,241,0.25)'
-                    }}
-                  >
-                    <span>💳</span> Pay with Stripe (Client Card)
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+    <div style={S.page}>
+      {/* ── Toast ── */}
+      {toast && (
+        <div style={{ ...S.toast, background: toast.ok ? '#22c55e' : '#ef4444' }}>
+          {toast.msg}
         </div>
       )}
 
-
-      {/* ── Add Client Modal ────────────────────────────────────── */}
-      {showAddModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: '20px' }}>
-          <div style={{ backgroundColor: 'white', borderRadius: '20px', padding: '32px', width: '100%', maxWidth: '520px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', border: '1px solid #E2E8F0' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#0F172A' }}>➕ Add New Client</h2>
-                <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748B' }}>Creates user account, AI chatbot, and stores credentials</p>
-              </div>
-              <button onClick={() => { setShowAddModal(false); setAddResult(null); }} style={{ background: '#F1F5F9', border: 'none', width: '32px', height: '32px', borderRadius: '50%', fontSize: '14px', cursor: 'pointer', color: '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+      {/* ── Header ── */}
+      <header style={S.header}>
+        <div style={S.headerInner}>
+          <div style={S.logo}>
+            <span style={S.logoIcon}>🌴</span>
+            <div>
+              <div style={S.logoTitle}>Gulf Real Estate</div>
+              <div style={S.logoSub}>Super Admin Dashboard</div>
             </div>
-
-            {addResult?.type === 'success' ? (
-              <div style={{ textAlign: 'center', padding: '16px 0' }}>
-                <div style={{ fontSize: '48px', marginBottom: '10px' }}>🎉</div>
-                <h3 style={{ fontSize: '18px', color: '#065F46', margin: '0 0 6px', fontWeight: '800' }}>Client & Chatbot Created!</h3>
-                <p style={{ fontSize: '13px', color: '#64748B', marginBottom: '16px' }}>Embed code is ready to install:</p>
-                <textarea
-                  readOnly
-                  rows={6}
-                  style={{ width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #CBD5E1', fontFamily: 'monospace', fontSize: '11px', backgroundColor: '#F8FAFC', color: '#0F172A', boxSizing: 'border-box' }}
-                  value={`<!-- AI Chatbot by RealtyPropFlow -->
-<script>
-  window.CHATBOT_CONFIG = {
-    botId: "${addResult.bot?.id}",
-    welcomeMessage: "${addResult.bot?.welcome_message || 'Hi there! 👋 How can I help you today?'}"
-  };
-</script>
-<script src="${process.env.NEXT_PUBLIC_SITE_URL || 'https://www.realtypropflow.com'}/chatbot-embed.js" defer></script>`}
-                />
-                <button onClick={() => { setShowAddModal(false); setAddResult(null); }} style={{ width: '100%', marginTop: '16px', padding: '12px', backgroundColor: '#10B981', color: 'white', border: 'none', borderRadius: '10px', fontWeight: '800', cursor: 'pointer', fontSize: '14px' }}>Done</button>
-              </div>
-            ) : (
-              <form onSubmit={handleAddClient} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                {addResult?.type === 'error' && (
-                  <div style={{ backgroundColor: '#FEF2F2', color: '#991B1B', padding: '12px', borderRadius: '10px', fontSize: '13px', border: '1px solid #FCA5A5' }}>
-                    {addResult.message}
-                  </div>
-                )}
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', marginBottom: '5px', color: '#334155' }}>Client Name (Agent Name) *</label>
-                  <input required type="text" value={addForm.name} onChange={e => setAddForm({...addForm, name: e.target.value})} style={{ width: '100%', padding: '10px 14px', borderRadius: '9px', border: '1px solid #CBD5E1', fontSize: '13px', boxSizing: 'border-box', outline: 'none' }} placeholder="e.g. Sandra Roongsang" />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', marginBottom: '5px', color: '#334155' }}>Email Address *</label>
-                  <input required type="email" value={addForm.email} onChange={e => setAddForm({...addForm, email: e.target.value})} style={{ width: '100%', padding: '10px 14px', borderRadius: '9px', border: '1px solid #CBD5E1', fontSize: '13px', boxSizing: 'border-box', outline: 'none' }} placeholder="client@example.com" />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', marginBottom: '5px', color: '#334155' }}>Password *</label>
-                  <input required type="text" value={addForm.password} onChange={e => setAddForm({...addForm, password: e.target.value})} style={{ width: '100%', padding: '10px 14px', borderRadius: '9px', border: '1px solid #CBD5E1', fontSize: '13px', boxSizing: 'border-box', outline: 'none' }} placeholder="Set password (will be stored for reference)" />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', marginBottom: '5px', color: '#334155' }}>Phone Number (Optional)</label>
-                  <input type="text" value={addForm.phone} onChange={e => setAddForm({...addForm, phone: e.target.value})} style={{ width: '100%', padding: '10px 14px', borderRadius: '9px', border: '1px solid #CBD5E1', fontSize: '13px', boxSizing: 'border-box', outline: 'none' }} placeholder="+1 234 567 8900" />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', marginBottom: '5px', color: '#334155' }}>Website URL (For Property Auto-Scraping) *</label>
-                  <input required type="url" value={addForm.website_url || ''} onChange={e => setAddForm({...addForm, website_url: e.target.value})} style={{ width: '100%', padding: '10px 14px', borderRadius: '9px', border: '1px solid #CBD5E1', fontSize: '13px', boxSizing: 'border-box', outline: 'none' }} placeholder="https://www.remax.com" />
-                </div>
-                <button type="submit" disabled={isAdding} style={{ padding: '13px', background: 'linear-gradient(135deg, #4F46E5, #3B82F6)', color: '#FFF', border: 'none', borderRadius: '10px', cursor: isAdding ? 'not-allowed' : 'pointer', fontWeight: '800', fontSize: '14px', marginTop: '6px', opacity: isAdding ? 0.7 : 1, boxShadow: '0 4px 14px rgba(79,70,229,0.35)' }}>
-                  {isAdding ? 'Creating Client...' : 'Create Client & Chatbot'}
-                </button>
-              </form>
-            )}
           </div>
+          <div style={S.headerFlags}>🇦🇪 UAE &nbsp;&nbsp; 🇸🇦 Saudi Arabia</div>
         </div>
-      )}
+      </header>
 
-      {/* ── Embed Code Modal ────────────────────────────────────── */}
-      {codeModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: '20px' }}>
-          <div style={{ backgroundColor: 'white', borderRadius: '20px', padding: '32px', width: '100%', maxWidth: '560px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', border: '1px solid #E2E8F0' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: '#0F172A' }}>📋 Embed Code</h2>
-                <p style={{ margin: '3px 0 0', fontSize: '12px', color: '#64748B' }}>{codeModal.name}</p>
-              </div>
-              <button onClick={() => setCodeModal(null)} style={{ background: '#F1F5F9', border: 'none', width: '32px', height: '32px', borderRadius: '50%', fontSize: '14px', cursor: 'pointer', color: '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
-            </div>
-            <p style={{ fontSize: '13px', color: '#64748B', marginBottom: '14px' }}>
-              Paste this snippet into the client's website just before <code>&lt;/body&gt;</code>:
-            </p>
-            <textarea
-              readOnly
-              rows={8}
-              style={{ width: '100%', padding: '14px', borderRadius: '10px', border: '1px solid #CBD5E1', fontFamily: 'monospace', fontSize: '11px', backgroundColor: '#F8FAFC', color: '#0F172A', boxSizing: 'border-box' }}
-              value={`<!-- AI Chatbot by RealtyPropFlow -->
-<script>
-  window.CHATBOT_CONFIG = {
-    botId: "${codeModal.id}",
-    welcomeMessage: "${codeModal.welcome_message || 'Hi there! 👋 How can I help you today?'}"
-  };
-</script>
-<script src="${process.env.NEXT_PUBLIC_SITE_URL || 'https://www.realtypropflow.com'}/chatbot-embed.js" defer></script>`}
-            />
-            <button
-              onClick={() => {
-                const code = `<!-- AI Chatbot by RealtyPropFlow -->
-<script>
-  window.CHATBOT_CONFIG = {
-    botId: "${codeModal.id}",
-    welcomeMessage: "${codeModal.welcome_message || 'Hi there! 👋 How can I help you today?'}"
-  };
-</script>
-<script src="${process.env.NEXT_PUBLIC_SITE_URL || 'https://www.realtypropflow.com'}/chatbot-embed.js" defer></script>`;
-                navigator.clipboard.writeText(code);
-                alert('Copied to clipboard! 📋');
-              }}
-              style={{ width: '100%', marginTop: '14px', padding: '12px', backgroundColor: '#4F46E5', color: 'white', border: 'none', borderRadius: '10px', fontWeight: '800', cursor: 'pointer', fontSize: '13px', boxShadow: '0 4px 14px rgba(79,70,229,0.3)' }}
-            >
-              📋 Copy to Clipboard
-            </button>
-          </div>
-        </div>
-      )}
+      {/* ── Tabs ── */}
+      <nav style={S.nav}>
+        {[
+          { id: 'overview', label: '📊 Overview', },
+          { id: 'properties', label: '🏘️ Properties' },
+          { id: 'cache', label: '🗄️ City Cache' },
+          { id: 'users', label: '👥 Users' },
+        ].map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{ ...S.tab, ...(tab === t.id ? S.tabActive : {}) }}>
+            {t.label}
+          </button>
+        ))}
+      </nav>
 
-      {/* ── Top Header & Stats Overview ──────────────────────────── */}
-      <div style={{ marginBottom: '28px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
+      <main style={S.main}>
+
+        {/* ══════════════ OVERVIEW ══════════════ */}
+        {tab === 'overview' && (
           <div>
-            <h1 style={{ fontSize: '28px', fontWeight: '900', color: '#0F172A', margin: 0, letterSpacing: '-0.02em' }}>
-              Clients & Chatbots
-            </h1>
-            <p style={{ color: '#64748B', marginTop: '4px', fontSize: '14px', margin: '4px 0 0 0' }}>
-              Manage clients, passwords, active subscriptions, and AI chatbots.
-            </p>
-          </div>
-
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <button
-              onClick={() => setShowAddModal(true)}
-              style={{
-                padding: '11px 20px',
-                background: 'linear-gradient(135deg, #4F46E5 0%, #3B82F6 100%)',
-                color: '#FFFFFF',
-                border: 'none',
-                borderRadius: '12px',
-                cursor: 'pointer',
-                fontWeight: '800',
-                fontSize: '13px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                boxShadow: '0 4px 14px rgba(79,70,229,0.35)',
-                transition: 'transform 0.15s ease'
-              }}
-            >
-              <span style={{ fontSize: '15px' }}>➕</span> Add Client
-            </button>
-
-            <button
-              onClick={fetchUsers}
-              style={{
-                padding: '11px 16px',
-                backgroundColor: '#FFFFFF',
-                color: '#334155',
-                border: '1px solid #CBD5E1',
-                borderRadius: '12px',
-                cursor: 'pointer',
-                fontWeight: '700',
-                fontSize: '13px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-              }}
-            >
-              <span>🔄</span> Refresh
-            </button>
-
-            <button
-              onClick={async () => {
-                if (!confirm('This will fix bot_id links for all existing clients. Proceed?')) return;
-                const res = await fetch('/api/superadmin/fix-bot-links', { method: 'POST' });
-                const data = await res.json();
-                alert(`✅ Fixed: ${data.fixed} clients\n❌ Failed: ${data.failed || 0}\n\n${(data.log || []).join('\n')}`);
-                fetchUsers();
-              }}
-              style={{
-                padding: '11px 14px',
-                background: '#FEF2F2',
-                color: '#DC2626',
-                border: '1px solid #FECACA',
-                borderRadius: '12px',
-                cursor: 'pointer',
-                fontWeight: '700',
-                fontSize: '12px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}
-            >
-              <span>🔧</span> Fix Links
-            </button>
-
-            <button
-              onClick={async () => {
-                if (!confirm('⚠️ Set ALL bots to "Real Estate" & "premium" (Live Properties enabled)?')) return;
-                const res = await fetch('/api/superadmin/fix-all-bots', { method: 'POST' });
-                const data = await res.json();
-                if (data.success) {
-                  alert(`✅ Done!\nFixed: ${data.fixed} bots\nAlready OK: ${data.alreadyOk || 0}`);
-                  fetchUsers();
-                } else {
-                  alert('❌ Error: ' + (data.error || 'Unknown error'));
-                }
-              }}
-              style={{
-                padding: '11px 16px',
-                background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
-                color: 'white',
-                border: 'none',
-                borderRadius: '12px',
-                cursor: 'pointer',
-                fontWeight: '700',
-                fontSize: '12px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                boxShadow: '0 3px 10px rgba(16,185,129,0.25)'
-              }}
-            >
-              <span>🏡</span> Fix All Live Bots
-            </button>
-          </div>
-        </div>
-
-        {/* Quick Stats & Search Bar */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '20px' }}>
-          <div style={{ backgroundColor: 'white', padding: '16px 20px', borderRadius: '14px', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-            <div style={{ fontSize: '12px', color: '#64748B', fontWeight: '700' }}>TOTAL CLIENTS</div>
-            <div style={{ fontSize: '24px', fontWeight: '900', color: '#0F172A', marginTop: '4px' }}>{users.length}</div>
-          </div>
-          <div style={{ backgroundColor: 'white', padding: '16px 20px', borderRadius: '14px', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-            <div style={{ fontSize: '12px', color: '#059669', fontWeight: '700' }}>ACTIVE ACCOUNTS</div>
-            <div style={{ fontSize: '24px', fontWeight: '900', color: '#059669', marginTop: '4px' }}>{activeCount}</div>
-          </div>
-          <div style={{ backgroundColor: 'white', padding: '16px 20px', borderRadius: '14px', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-            <div style={{ fontSize: '12px', color: '#4F46E5', fontWeight: '700' }}>PREMIUM SUBSCRIBERS</div>
-            <div style={{ fontSize: '24px', fontWeight: '900', color: '#4F46E5', marginTop: '4px' }}>{premiumCount}</div>
-          </div>
-        </div>
-
-        {/* Search Input */}
-        <div style={{ position: 'relative' }}>
-          <input
-            type="text"
-            placeholder="🔍 Search clients by email, website, or plan..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '13px 18px',
-              borderRadius: '12px',
-              border: '1px solid #CBD5E1',
-              backgroundColor: '#FFFFFF',
-              fontSize: '13px',
-              fontWeight: '500',
-              color: '#0F172A',
-              outline: 'none',
-              boxSizing: 'border-box',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
-            }}
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              style={{
-                position: 'absolute',
-                right: '14px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                background: 'none',
-                border: 'none',
-                color: '#94A3B8',
-                cursor: 'pointer',
-                fontWeight: 'bold'
-              }}
-            >
-              ✕
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* ── Clients List ────────────────────────────────────────── */}
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '80px 20px', color: '#64748B' }}>
-          <div style={{ fontSize: '32px', marginBottom: '10px' }}>⏳</div>
-          <div style={{ fontWeight: '700', fontSize: '16px' }}>Loading clients...</div>
-        </div>
-      ) : filteredUsers.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '60px 20px', background: 'white', borderRadius: '16px', border: '1px dashed #CBD5E1', color: '#64748B' }}>
-          <div style={{ fontSize: '36px', marginBottom: '10px' }}>👥</div>
-          <div style={{ fontWeight: '800', fontSize: '16px', color: '#0F172A' }}>
-            {searchQuery ? 'No matching clients found' : 'No clients found'}
-          </div>
-          <p style={{ fontSize: '13px', marginTop: '4px' }}>
-            {searchQuery ? 'Try clearing the search query' : 'Get started by adding your first client using the button above.'}
-          </p>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {filteredUsers.map((user) => {
-            const isExpanded = expandedUser === user.user_id;
-            const trial = getTrialInfo(user);
-            const effectivePlan = (user.plan || (user.status === 'Active' ? 'pro' : 'none')).toLowerCase();
-            const isPremium = effectivePlan === 'premium' || effectivePlan === 'pro';
-            const isPasswordRevealed = revealedPasswords[user.user_id];
-            const isCopied = copiedPasswordId === user.user_id;
-
-            return (
-              <div
-                key={user.user_id}
-                style={{
-                  backgroundColor: 'white',
-                  borderRadius: '16px',
-                  border: isExpanded ? '1.5px solid #6366F1' : '1px solid #E2E8F0',
-                  boxShadow: isExpanded ? '0 10px 25px -5px rgba(99,102,241,0.1)' : '0 2px 6px rgba(0,0,0,0.02)',
-                  transition: 'all 0.2s ease',
-                  overflow: 'hidden'
-                }}
-              >
-                {/* ── Client Header Row (Clean & Minimalist) ── */}
-                <div
-                  onClick={() => toggleUserExpand(user.user_id)}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '16px 20px',
-                    cursor: 'pointer',
-                    userSelect: 'none',
-                    backgroundColor: isExpanded ? '#F8FAFC' : 'white',
-                    borderBottom: isExpanded ? '1px solid #EEF2F6' : 'none',
-                    flexWrap: 'wrap',
-                    gap: '12px',
-                    transition: 'background-color 0.15s ease'
-                  }}
-                >
-                  {/* Left: Avatar + Email + Expand hint */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1, minWidth: '240px' }}>
-                    <div style={{
-                      width: '42px',
-                      height: '42px',
-                      borderRadius: '12px',
-                      background: isExpanded
-                        ? 'linear-gradient(135deg, #4F46E5 0%, #3B82F6 100%)'
-                        : 'linear-gradient(135deg, #6366F1 0%, #06B6D4 100%)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'white',
-                      fontWeight: '800',
-                      fontSize: '16px',
-                      flexShrink: 0,
-                      boxShadow: '0 3px 8px rgba(79,70,229,0.2)'
-                    }}>
-                      {(user.email || 'U')[0].toUpperCase()}
-                    </div>
-
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontWeight: '800', color: '#0F172A', fontSize: '15px', letterSpacing: '-0.01em' }}>
-                          {user.email || 'No email recorded'}
-                        </span>
-                        <span style={{
-                          fontSize: '11px',
-                          color: isExpanded ? '#4F46E5' : '#94A3B8',
-                          fontWeight: '700',
-                          backgroundColor: isExpanded ? '#EEF2FF' : '#F1F5F9',
-                          padding: '2px 8px',
-                          borderRadius: '6px',
-                          transition: 'all 0.15s ease'
-                        }}>
-                          {isExpanded ? '▲ Close Details' : '▼ Click for Details'}
-                        </span>
-                      </div>
-                      <div style={{ fontSize: '12px', color: '#64748B', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span>Joined: {user.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A'}</span>
-                        <span style={{ color: '#CBD5E1' }}>•</span>
-                        <span style={{ color: isPremium ? '#4338CA' : '#64748B', fontWeight: '700' }}>
-                          {isPremium ? '⭐ Premium' : '📦 Standard'}
-                        </span>
-                      </div>
-                    </div>
+            <div style={S.sectionTitle}>Overview</div>
+            {loading.stats ? <div style={S.loader}>Loading stats…</div> : (
+              <div style={S.statsGrid}>
+                {[
+                  { icon: '🏠', label: 'Gulf Properties', value: fmt(stats?.totalProperties), color: '#D4A843' },
+                  { icon: '🏙️', label: 'Cities Covered', value: fmt(stats?.uniqueCities), color: '#60a5fa' },
+                  { icon: '⚡', label: 'Cached Cities', value: fmt(stats?.cachedCities), color: '#34d399' },
+                  { icon: '👤', label: 'Total Users', value: fmt(stats?.totalUsers), color: '#a78bfa' },
+                  { icon: '🤖', label: 'Active Bots', value: fmt(stats?.activeBots), color: '#f97316' },
+                ].map(c => (
+                  <div key={c.label} style={S.statCard}>
+                    <div style={{ fontSize: 32 }}>{c.icon}</div>
+                    <div style={{ ...S.statValue, color: c.color }}>{c.value}</div>
+                    <div style={S.statLabel}>{c.label}</div>
                   </div>
+                ))}
+              </div>
+            )}
+            <div style={S.quickActions}>
+              <div style={S.sectionTitle}>Quick Actions</div>
+              <div style={S.actionRow}>
+                <button style={S.btnGold} onClick={() => { setTab('properties'); setAddPropModal(true); }}>+ Add Property</button>
+                <button style={S.btnBlue} onClick={() => setTab('cache')}>🗄️ Manage Cache</button>
+                <button style={S.btnPurple} onClick={() => setTab('users')}>👥 Manage Users</button>
+                <button style={S.btnGreen} onClick={() => { fetchStats(); showToast('Stats refreshed ✅'); }}>🔄 Refresh Stats</button>
+              </div>
+            </div>
+          </div>
+        )}
 
-                  {/* Right: Quick Action Buttons */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }} onClick={e => e.stopPropagation()}>
-                    {/* Login as Client */}
-                    <button
-                      onClick={() => {
-                        localStorage.setItem('impersonated_user_id', user.user_id);
-                        localStorage.setItem('impersonated_user_email', user.email);
-                        window.location.href = '/dashboard';
-                      }}
-                      title="Open client dashboard"
-                      style={{
-                        padding: '8px 14px',
-                        borderRadius: '9px',
-                        border: '1px solid #C7D2FE',
-                        fontWeight: '700',
-                        cursor: 'pointer',
-                        fontSize: '12px',
-                        backgroundColor: '#FFFFFF',
-                        color: '#4F46E5',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '5px',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
-                      }}
-                    >
-                      <span>👤</span> Login as Client
-                    </button>
+        {/* ══════════════ PROPERTIES ══════════════ */}
+        {tab === 'properties' && (
+          <div>
+            <div style={S.rowBetween}>
+              <div style={S.sectionTitle}>Gulf Properties <span style={S.badge}>{fmt(propTotal)}</span></div>
+              <button style={S.btnGold} onClick={() => setAddPropModal(true)}>+ Add Property</button>
+            </div>
 
-                    {/* Status Badge & Toggle */}
-                    <button
-                      onClick={(e) => toggleUserStatus(user.user_id, user.status, e)}
-                      style={{
-                        padding: '8px 14px',
-                        borderRadius: '9px',
-                        border: 'none',
-                        fontWeight: '700',
-                        cursor: 'pointer',
-                        fontSize: '12px',
-                        backgroundColor: user.status === 'Active' ? '#DCFCE7' : '#FEE2E2',
-                        color: user.status === 'Active' ? '#166534' : '#991B1B',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px'
-                      }}
-                    >
-                      <span>{user.status === 'Active' ? '🟢 Active' : '🔴 Inactive'}</span>
-                    </button>
+            {/* Filters */}
+            <div style={S.filterRow}>
+              <select style={S.select} value={propFilter.country} onChange={e => { const v = { ...propFilter, country: e.target.value, city: '' }; setPropFilter(v); fetchProperties(1, v); }}>
+                <option value="">All Countries</option>
+                {COUNTRIES.map(c => <option key={c}>{c}</option>)}
+              </select>
+              <select style={S.select} value={propFilter.city} onChange={e => { const v = { ...propFilter, city: e.target.value }; setPropFilter(v); fetchProperties(1, v); }}>
+                <option value="">All Cities</option>
+                {(propFilter.country ? CITIES[propFilter.country] : Object.values(CITIES).flat()).map(c => <option key={c}>{c}</option>)}
+              </select>
+              <select style={S.select} value={propFilter.type} onChange={e => { const v = { ...propFilter, type: e.target.value }; setPropFilter(v); fetchProperties(1, v); }}>
+                <option value="">All Types</option>
+                {PROP_TYPES.map(t => <option key={t}>{t}</option>)}
+              </select>
+              <button style={S.btnGhost} onClick={() => { const v = { country: '', city: '', type: '' }; setPropFilter(v); fetchProperties(1, v); }}>Clear</button>
+            </div>
 
-                    {/* Delete */}
-                    <button
-                      onClick={(e) => deleteUser(user.user_id, user.email, e)}
-                      disabled={deletingUser === user.user_id}
-                      title="Permanently delete user"
-                      style={{
-                        padding: '8px 12px',
-                        borderRadius: '9px',
-                        border: '1px solid #E2E8F0',
-                        fontWeight: '700',
-                        cursor: deletingUser === user.user_id ? 'not-allowed' : 'pointer',
-                        fontSize: '12px',
-                        backgroundColor: '#0F172A',
-                        color: 'white',
-                        opacity: deletingUser === user.user_id ? 0.6 : 1,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px'
-                      }}
-                    >
-                      {deletingUser === user.user_id ? '⏳' : '🗑️ Delete'}
-                    </button>
-                  </div>
-                </div>
-
-                {/* ── Detailed Expanded View ── */}
-                {isExpanded && (
-                  <div style={{ padding: '24px', backgroundColor: '#F8FAFC' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '18px' }}>
-                      
-                      {/* 📋 Card 1: Account & Credentials */}
-                      <div style={{ backgroundColor: 'white', borderRadius: '14px', padding: '20px', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-                        <div style={{ fontSize: '13px', fontWeight: '800', color: '#0F172A', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span>🔐</span> Account & Login Credentials
-                        </div>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                          {/* Email */}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
-                            <span style={{ color: '#64748B', fontWeight: '600' }}>Email Address:</span>
-                            <strong style={{ color: '#0F172A' }}>{user.email || 'N/A'}</strong>
-                          </div>
-
-                          {/* Password */}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', backgroundColor: '#F8FAFC', padding: '10px 12px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                            <span style={{ color: '#64748B', fontWeight: '600' }}>Password:</span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              {user.plain_password ? (
-                                <>
-                                  <span style={{ fontFamily: isPasswordRevealed ? 'inherit' : 'monospace', fontWeight: '800', color: isPasswordRevealed ? '#0F172A' : '#64748B', fontSize: '13px' }}>
-                                    {isPasswordRevealed ? user.plain_password : '••••••••••••'}
-                                  </span>
-                                  <button
-                                    onClick={(e) => togglePasswordReveal(user.user_id, e)}
-                                    title={isPasswordRevealed ? 'Hide Password' : 'Show Password'}
-                                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', padding: '2px' }}
-                                  >
-                                    {isPasswordRevealed ? '👁️‍🗨️' : '👁️'}
-                                  </button>
-                                  <button
-                                    onClick={(e) => copyPassword(user.plain_password, user.user_id, e)}
-                                    title="Copy Password"
-                                    style={{
-                                      padding: '3px 8px',
-                                      backgroundColor: isCopied ? '#DCFCE7' : '#EEF2FF',
-                                      color: isCopied ? '#166534' : '#4F46E5',
-                                      border: `1px solid ${isCopied ? '#86EFAC' : '#C7D2FE'}`,
-                                      borderRadius: '6px',
-                                      fontSize: '11px',
-                                      fontWeight: '700',
-                                      cursor: 'pointer'
-                                    }}
-                                  >
-                                    {isCopied ? '✓ Copied' : '📋 Copy'}
-                                  </button>
-                                </>
-                              ) : (
-                                <span style={{ color: '#94A3B8', fontSize: '12px', fontStyle: 'italic' }}>
-                                  Not saved (Created before plain storage)
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Website */}
-                          {user.website_url && (
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
-                              <span style={{ color: '#64748B', fontWeight: '600' }}>Website URL:</span>
-                              <a href={user.website_url} target="_blank" rel="noreferrer" style={{ color: '#2563EB', textDecoration: 'none', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                🔗 Visit Website
-                              </a>
-                            </div>
-                          )}
-
-                          {/* Created Date */}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
-                            <span style={{ color: '#64748B', fontWeight: '600' }}>Member Since:</span>
-                            <span style={{ color: '#334155', fontWeight: '700' }}>
-                              {user.created_at ? new Date(user.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* 💳 Card 2: Subscription & Trial Plan */}
-                      <div style={{ backgroundColor: 'white', borderRadius: '14px', padding: '20px', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-                        <div style={{ fontSize: '13px', fontWeight: '800', color: '#0F172A', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span>💳</span> Plan & Subscription Details
-                        </div>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                          {/* Plan Status */}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
-                            <span style={{ color: '#64748B', fontWeight: '600' }}>Active Plan:</span>
-                            <span style={{
-                              padding: '3px 10px',
-                              borderRadius: '20px',
-                              fontSize: '12px',
-                              fontWeight: '800',
-                              backgroundColor: isPremium ? '#EEF2FF' : '#F1F5F9',
-                              color: isPremium ? '#4338CA' : '#475569',
-                              border: isPremium ? '1px solid #C7D2FE' : '1px solid #E2E8F0'
-                            }}>
-                              {isPremium ? '⭐ Premium Plan' : '📦 Standard Plan'}
-                            </span>
-                          </div>
-
-                          {/* Trial Status */}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
-                            <span style={{ color: '#64748B', fontWeight: '600' }}>Trial Period:</span>
-                            {trial ? (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span style={{
-                                  color: trial.expired ? '#EF4444' : (trial.daysLeft <= 3 ? '#B45309' : '#047857'),
-                                  background: trial.expired ? '#FEE2E2' : (trial.daysLeft <= 3 ? '#FEF3C7' : '#D1FAE5'),
-                                  padding: '2px 8px',
-                                  borderRadius: '12px',
-                                  fontWeight: '800',
-                                  fontSize: '11px'
-                                }}>
-                                  {trial.expired ? '⏰ Expired' : `🕐 ${trial.daysLeft} days left`}
-                                </span>
-                                <button
-                                  onClick={() => resetTrialTo15Days(user.user_id)}
-                                  title="Extend trial by 15 days"
-                                  style={{
-                                    padding: '2px 8px',
-                                    background: '#FFFBEB',
-                                    color: '#92400E',
-                                    border: '1px solid #FDE68A',
-                                    borderRadius: '6px',
-                                    fontSize: '11px',
-                                    fontWeight: '800',
-                                    cursor: 'pointer'
-                                  }}
-                                >
-                                  +15 Days
-                                </button>
-                              </div>
-                            ) : (
-                              <span style={{ color: '#94A3B8', fontSize: '12px' }}>No trial set</span>
-                            )}
-                          </div>
-
-                          {/* Billing Cycle */}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
-                            <span style={{ color: '#64748B', fontWeight: '600' }}>Billing Cycle:</span>
-                            <span style={{ color: '#334155', fontWeight: '700', textTransform: 'capitalize' }}>
-                              {user.billing_cycle || 'Monthly'}
-                            </span>
-                          </div>
-
-                          {/* Assign / Change Plan Button */}
-                          <button
-                            onClick={() => {
-                              setAssignModal({ userId: user.user_id, email: user.email });
-                              setAssignForm({ plan: isPremium ? 'pro' : 'starter', cycle: 'monthly', note: '' });
-                              setAssignResult(null);
-                            }}
-                            style={{
-                              marginTop: '6px',
-                              padding: '9px 14px',
-                              borderRadius: '9px',
-                              border: '1px solid #A7F3D0',
-                              fontWeight: '800',
-                              cursor: 'pointer',
-                              fontSize: '12px',
-                              backgroundColor: '#ECFDF5',
-                              color: '#065F46',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: '6px',
-                              boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
-                            }}
-                          >
-                            <span>💳</span> Assign / Change Subscription Plan
+            {loading.props ? <div style={S.loader}>Loading…</div> : (
+              <div style={S.tableWrap}>
+                <table style={S.table}>
+                  <thead>
+                    <tr>
+                      {['Country', 'City', 'Area', 'Type', 'Beds', 'Price', 'Currency', 'Actions'].map(h => (
+                        <th key={h} style={S.th}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {properties.length === 0 ? (
+                      <tr><td colSpan={8} style={{ ...S.td, textAlign: 'center', color: '#64748b' }}>No properties found</td></tr>
+                    ) : properties.map(p => (
+                      <tr key={p.id} style={S.tr}>
+                        <td style={S.td}><span style={{ ...S.countryBadge, background: p.country === 'UAE' ? '#1d4ed833' : '#15803d33', color: p.country === 'UAE' ? '#60a5fa' : '#34d399' }}>{p.country === 'UAE' ? '🇦🇪' : '🇸🇦'} {p.country}</span></td>
+                        <td style={S.td}>{p.city}</td>
+                        <td style={S.td}>{p.area_district || '—'}</td>
+                        <td style={S.td}>{p.property_type}</td>
+                        <td style={S.td}>{p.bedrooms} BR / {p.bathrooms} BA</td>
+                        <td style={{ ...S.td, color: '#D4A843', fontWeight: 700 }}>{Number(p.price).toLocaleString()}</td>
+                        <td style={S.td}>{p.currency}</td>
+                        <td style={S.td}>
+                          <button style={S.btnDanger} disabled={delPropId === p.id} onClick={() => deleteProperty(p.id)}>
+                            {delPropId === p.id ? '…' : '🗑️'}
                           </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Pagination */}
+            <div style={S.pagination}>
+              <button style={S.btnGhost} disabled={propPage <= 1} onClick={() => { setPropPage(p => p - 1); fetchProperties(propPage - 1); }}>← Prev</button>
+              <span style={{ color: '#94a3b8' }}>Page {propPage} / {Math.max(1, Math.ceil(propTotal / 20))}</span>
+              <button style={S.btnGhost} disabled={propPage >= Math.ceil(propTotal / 20)} onClick={() => { setPropPage(p => p + 1); fetchProperties(propPage + 1); }}>Next →</button>
+            </div>
+          </div>
+        )}
+
+        {/* ══════════════ CACHE ══════════════ */}
+        {tab === 'cache' && (
+          <div>
+            <div style={S.rowBetween}>
+              <div style={S.sectionTitle}>City Cache <span style={S.badge}>{cache.length}</span></div>
+              <button style={S.btnDanger} onClick={() => clearCache()} disabled={loading.clearCache}>
+                {loading.clearCache ? '…' : '🗑️ Clear All Cache'}
+              </button>
+            </div>
+            {loading.cache ? <div style={S.loader}>Loading…</div> : (
+              <div style={S.tableWrap}>
+                <table style={S.table}>
+                  <thead>
+                    <tr>{['City Key', 'Country', 'Properties', 'Last Updated', 'Action'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {cache.length === 0 ? (
+                      <tr><td colSpan={5} style={{ ...S.td, textAlign: 'center', color: '#64748b' }}>No cache entries</td></tr>
+                    ) : cache.map(c => (
+                      <tr key={c.city_key} style={S.tr}>
+                        <td style={{ ...S.td, fontWeight: 600, color: '#D4A843' }}>{c.city_key}</td>
+                        <td style={S.td}>{c.country === 'UAE' ? '🇦🇪 UAE' : c.country === 'Saudi Arabia' ? '🇸🇦 KSA' : c.country || '—'}</td>
+                        <td style={S.td}><span style={S.greenBadge}>{c.property_count} props</span></td>
+                        <td style={{ ...S.td, color: '#64748b' }}>{timeAgo(c.updated_at)}</td>
+                        <td style={S.td}>
+                          <button style={S.btnDanger} onClick={() => clearCache(c.city_key)}>🗑️ Clear</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ══════════════ USERS ══════════════ */}
+        {tab === 'users' && (
+          <div>
+            <div style={S.rowBetween}>
+              <div style={S.sectionTitle}>Users <span style={S.badge}>{users.length}</span></div>
+              <input style={S.searchInput} placeholder="Search by email or name…" value={search} onChange={e => setSearch(e.target.value)} />
+            </div>
+            {loading.users ? <div style={S.loader}>Loading…</div> : (
+              <div>
+                {filteredUsers.map(u => {
+                  const days = trialDays(u);
+                  const expanded = expandedUser === u.user_id;
+                  return (
+                    <div key={u.user_id} style={S.userCard}>
+                      <div style={S.userHeader} onClick={() => {
+                        setExpandedUser(expanded ? null : u.user_id);
+                        if (!userBots[u.user_id]) fetchUserBots(u.user_id);
+                      }}>
+                        <div style={S.userInfo}>
+                          <div style={S.userAvatar}>{(u.email || u.name || '?')[0].toUpperCase()}</div>
+                          <div>
+                            <div style={S.userName}>{u.name || '—'}</div>
+                            <div style={S.userEmail}>{u.email}</div>
+                          </div>
+                        </div>
+                        <div style={S.userMeta}>
+                          {u.plan && <span style={{ ...S.planBadge, background: u.plan === 'premium' ? '#D4A84333' : '#60a5fa22', color: u.plan === 'premium' ? '#D4A843' : '#60a5fa' }}>{u.plan}</span>}
+                          {days !== null && <span style={{ ...S.planBadge, background: days > 3 ? '#22c55e22' : '#ef444422', color: days > 3 ? '#22c55e' : '#ef4444' }}>{days > 0 ? `${days}d trial` : 'Trial expired'}</span>}
+                          <span style={{ ...S.planBadge, background: u.status === 'Active' ? '#22c55e22' : '#ef444422', color: u.status === 'Active' ? '#22c55e' : '#ef4444' }}>{u.status || 'Active'}</span>
+                          <span style={{ color: '#64748b', fontSize: 18 }}>{expanded ? '▲' : '▼'}</span>
                         </div>
                       </div>
-                    </div>
 
-                    {/* 🤖 Section: Active Chatbots */}
-                    <div style={{ marginTop: '18px', backgroundColor: 'white', borderRadius: '14px', padding: '20px', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-                      <div style={{ fontSize: '13px', fontWeight: '800', color: '#0F172A', marginBottom: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span>🤖</span> AI Chatbots Assigned to this Client
-                        </span>
-                        <span style={{ fontSize: '12px', color: '#64748B', fontWeight: '600' }}>
-                          {userBots[user.user_id]?.length || 0} Bot(s)
-                        </span>
-                      </div>
-
-                      {botsLoading[user.user_id] ? (
-                        <div style={{ color: '#64748B', fontSize: '13px', padding: '16px 0', textAlign: 'center' }}>
-                          ⏳ Loading chatbots...
-                        </div>
-                      ) : !userBots[user.user_id] || userBots[user.user_id].length === 0 ? (
-                        <div style={{ color: '#94A3B8', fontSize: '13px', padding: '16px 0', textAlign: 'center', background: '#F8FAFC', borderRadius: '10px' }}>
-                          No chatbots found for this client yet.
-                        </div>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                          {userBots[user.user_id].map(bot => (
-                            <div
-                              key={bot.id}
-                              style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                backgroundColor: '#F8FAFC',
-                                padding: '14px 18px',
-                                borderRadius: '12px',
-                                border: '1px solid #E2E8F0',
-                                flexWrap: 'wrap',
-                                gap: '12px'
-                              }}
-                            >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                {bot.bot_avatar && (bot.bot_avatar.startsWith('http') || bot.bot_avatar.startsWith('/')) ? (
-                                  <img 
-                                    src={bot.bot_avatar} 
-                                    alt="Bot Avatar" 
-                                    style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', border: '1.5px solid #CBD5E1' }} 
-                                  />
-                                ) : (
-                                  <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#EEF2FF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>
-                                    {bot.bot_avatar || '🤖'}
+                      {expanded && (
+                        <div style={S.userExpanded}>
+                          <div style={S.actionRow}>
+                            <button style={S.btnBlue} onClick={() => resetTrial(u.user_id)}>🔄 Reset Trial</button>
+                            <button style={S.btnGhost} onClick={() => toggleUser(u.user_id, u.status || 'Active')}>
+                              {u.status === 'Inactive' ? '✅ Activate' : '⛔ Deactivate'}
+                            </button>
+                            <button style={S.btnDanger} onClick={() => deleteUser(u.user_id, u.email)}>🗑️ Delete User</button>
+                          </div>
+                          <div style={{ marginTop: 12, color: '#94a3b8', fontSize: 13 }}>
+                            Joined: {u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}
+                            &nbsp;|&nbsp; Trial ends: {u.trial_ends_at ? new Date(u.trial_ends_at).toLocaleDateString() : '—'}
+                          </div>
+                          {/* Bots */}
+                          <div style={{ marginTop: 14 }}>
+                            <div style={{ color: '#D4A843', fontWeight: 600, marginBottom: 8 }}>🤖 Bots</div>
+                            {!userBots[u.user_id] ? <div style={{ color: '#64748b' }}>Loading…</div> :
+                              userBots[u.user_id].length === 0 ? <div style={{ color: '#64748b' }}>No bots</div> :
+                                userBots[u.user_id].map(b => (
+                                  <div key={b.id} style={S.botRow}>
+                                    <span style={{ color: '#e2e8f0' }}>{b.agent_name || b.id}</span>
+                                    <span style={{ ...S.planBadge, background: b.status === 'Active' ? '#22c55e22' : '#ef444422', color: b.status === 'Active' ? '#22c55e' : '#ef4444' }}>{b.status}</span>
                                   </div>
-                                )}
-                                <div>
-                                  <div style={{ fontWeight: '800', color: '#0F172A', fontSize: '14px' }}>
-                                    {bot.name}
-                                  </div>
-                                  <div style={{ fontSize: '12px', color: '#64748B', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                    <span>🌐 {bot.website_url || 'No URL'}</span>
-                                    <span style={{ color: '#CBD5E1' }}>•</span>
-                                    <span style={{ padding: '1px 7px', borderRadius: '12px', backgroundColor: bot.industry === 'Real Estate' ? '#D1FAE5' : '#FEF3C7', color: bot.industry === 'Real Estate' ? '#065F46' : '#92400E', fontWeight: '800', fontSize: '10px' }}>
-                                      {bot.industry === 'Real Estate' ? '🏡 Real Estate' : bot.industry}
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                <span style={{ padding: '3px 10px', borderRadius: '50px', fontSize: '11px', fontWeight: '800', backgroundColor: bot.status === 'Active' ? '#D1FAE5' : '#FEE2E2', color: bot.status === 'Active' ? '#065F46' : '#991B1B' }}>
-                                  {bot.status === 'Active' ? '🟢 Active' : '🔴 Inactive'}
-                                </span>
-
-                                <button
-                                  onClick={() => setCodeModal(bot)}
-                                  style={{ padding: '7px 14px', borderRadius: '8px', border: '1px solid #CBD5E1', fontWeight: '700', cursor: 'pointer', fontSize: '12px', backgroundColor: 'white', color: '#4F46E5', display: 'flex', alignItems: 'center', gap: '4px' }}
-                                >
-                                  📋 Get Code
-                                </button>
-
-                                <button
-                                  onClick={() => toggleBotStatus(bot)}
-                                  style={{ padding: '7px 12px', borderRadius: '8px', border: 'none', fontWeight: '700', cursor: 'pointer', fontSize: '12px', backgroundColor: bot.status === 'Active' ? '#FEE2E2' : '#4F46E5', color: bot.status === 'Active' ? '#991B1B' : 'white' }}
-                                >
-                                  {bot.status === 'Active' ? 'Deactivate' : '✓ Activate'}
-                                </button>
-                              </div>
-                            </div>
-                          ))}
+                                ))}
+                          </div>
                         </div>
                       )}
                     </div>
-
-                  </div>
-                )}
+                  );
+                })}
               </div>
-            );
-          })}
+            )}
+          </div>
+        )}
+
+      </main>
+
+      {/* ══════════════ ADD PROPERTY MODAL ══════════════ */}
+      {addPropModal && (
+        <div style={S.modalOverlay} onClick={() => setAddPropModal(false)}>
+          <div style={S.modal} onClick={e => e.stopPropagation()}>
+            <div style={S.modalTitle}>Add Gulf Property</div>
+            <div style={S.formGrid}>
+              {[
+                { label: 'Country', key: 'country', type: 'select', opts: COUNTRIES },
+                { label: 'City', key: 'city', type: 'select', opts: CITIES[propForm.country] || [] },
+                { label: 'Area / District', key: 'area_district', type: 'text', placeholder: 'e.g. Palm Jumeirah' },
+                { label: 'Property Type', key: 'property_type', type: 'select', opts: PROP_TYPES },
+                { label: 'Bedrooms', key: 'bedrooms', type: 'number' },
+                { label: 'Bathrooms', key: 'bathrooms', type: 'number' },
+                { label: 'Area (sqft)', key: 'area_sqft', type: 'number' },
+                { label: 'Price', key: 'price', type: 'number', placeholder: 'e.g. 2500000' },
+                { label: 'Currency', key: 'currency', type: 'select', opts: ['AED', 'SAR'] },
+                { label: 'Agent Name', key: 'agent_name', type: 'text', placeholder: 'Optional' },
+                { label: 'Listing URL', key: 'source_url', type: 'text', placeholder: 'https://…' },
+              ].map(f => (
+                <div key={f.key} style={S.formField}>
+                  <label style={S.label}>{f.label}</label>
+                  {f.type === 'select' ? (
+                    <select style={S.input} value={propForm[f.key]} onChange={e => setPropForm(p => ({ ...p, [f.key]: e.target.value }))}>
+                      {f.opts.map(o => <option key={o}>{o}</option>)}
+                    </select>
+                  ) : (
+                    <input style={S.input} type={f.type} placeholder={f.placeholder || ''} value={propForm[f.key]} onChange={e => setPropForm(p => ({ ...p, [f.key]: f.type === 'number' ? Number(e.target.value) : e.target.value }))} />
+                  )}
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
+              <button style={S.btnGold} onClick={addProperty} disabled={loading.addProp}>
+                {loading.addProp ? 'Adding…' : '✅ Add Property'}
+              </button>
+              <button style={S.btnGhost} onClick={() => setAddPropModal(false)}>Cancel</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
   );
 }
+
+// ─── Styles ────────────────────────────────────────────────────────────────────
+const S = {
+  page: { minHeight: '100vh', background: '#080e1a', color: '#e2e8f0', fontFamily: "'Inter', -apple-system, sans-serif" },
+  toast: { position: 'fixed', top: 20, right: 20, zIndex: 9999, padding: '12px 20px', borderRadius: 8, color: '#fff', fontWeight: 600, boxShadow: '0 4px 20px #0008', fontSize: 14 },
+  header: { background: 'linear-gradient(135deg, #0d1b2a 0%, #1a2540 50%, #0d1b2a 100%)', borderBottom: '1px solid #D4A84333', padding: '0 0' },
+  headerInner: { maxWidth: 1280, margin: '0 auto', padding: '18px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  logo: { display: 'flex', alignItems: 'center', gap: 12 },
+  logoIcon: { fontSize: 36, filter: 'drop-shadow(0 0 12px #D4A843)' },
+  logoTitle: { fontSize: 22, fontWeight: 800, background: 'linear-gradient(90deg, #D4A843, #f5d68a)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' },
+  logoSub: { fontSize: 12, color: '#64748b', letterSpacing: 1 },
+  headerFlags: { fontSize: 20, color: '#94a3b8', letterSpacing: 2 },
+  nav: { maxWidth: 1280, margin: '0 auto', padding: '0 24px', display: 'flex', gap: 4, borderBottom: '1px solid #1e293b' },
+  tab: { padding: '14px 20px', background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 14, fontWeight: 500, borderBottom: '3px solid transparent', transition: 'all .2s' },
+  tabActive: { color: '#D4A843', borderBottomColor: '#D4A843' },
+  main: { maxWidth: 1280, margin: '0 auto', padding: '28px 24px' },
+  sectionTitle: { fontSize: 20, fontWeight: 700, color: '#e2e8f0', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 },
+  badge: { background: '#D4A84322', color: '#D4A843', padding: '2px 10px', borderRadius: 20, fontSize: 13 },
+  statsGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16, marginBottom: 32 },
+  statCard: { background: 'linear-gradient(135deg, #0f172a, #1e293b)', border: '1px solid #1e293b', borderRadius: 16, padding: '24px 20px', textAlign: 'center', transition: 'transform .2s', cursor: 'default' },
+  statValue: { fontSize: 36, fontWeight: 800, marginTop: 8 },
+  statLabel: { fontSize: 13, color: '#64748b', marginTop: 4 },
+  quickActions: { background: '#0f172a', borderRadius: 16, border: '1px solid #1e293b', padding: 24 },
+  actionRow: { display: 'flex', gap: 12, flexWrap: 'wrap' },
+  rowBetween: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 },
+  filterRow: { display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' },
+  select: { background: '#0f172a', border: '1px solid #334155', borderRadius: 8, color: '#e2e8f0', padding: '8px 12px', fontSize: 13 },
+  tableWrap: { overflowX: 'auto', borderRadius: 12, border: '1px solid #1e293b' },
+  table: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
+  th: { background: '#0f172a', padding: '12px 14px', textAlign: 'left', color: '#64748b', fontWeight: 600, borderBottom: '1px solid #1e293b', whiteSpace: 'nowrap' },
+  tr: { borderBottom: '1px solid #1e293b', transition: 'background .15s' },
+  td: { padding: '11px 14px', color: '#e2e8f0', verticalAlign: 'middle' },
+  countryBadge: { padding: '3px 10px', borderRadius: 12, fontSize: 12, fontWeight: 600 },
+  greenBadge: { background: '#22c55e22', color: '#22c55e', padding: '3px 10px', borderRadius: 12, fontSize: 12 },
+  pagination: { display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'center', marginTop: 20 },
+  userCard: { background: '#0f172a', border: '1px solid #1e293b', borderRadius: 14, marginBottom: 10, overflow: 'hidden' },
+  userHeader: { padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', transition: 'background .2s' },
+  userInfo: { display: 'flex', alignItems: 'center', gap: 14 },
+  userAvatar: { width: 42, height: 42, borderRadius: '50%', background: 'linear-gradient(135deg, #D4A843, #f5d68a)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: '#080e1a', fontSize: 18 },
+  userName: { fontWeight: 600, color: '#e2e8f0', fontSize: 15 },
+  userEmail: { color: '#64748b', fontSize: 13 },
+  userMeta: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' },
+  planBadge: { padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600 },
+  userExpanded: { padding: '0 20px 18px', borderTop: '1px solid #1e293b' },
+  botRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 12px', background: '#080e1a', borderRadius: 8, marginBottom: 6, fontSize: 13 },
+  searchInput: { background: '#0f172a', border: '1px solid #334155', borderRadius: 8, color: '#e2e8f0', padding: '8px 16px', fontSize: 13, width: 280 },
+  loader: { textAlign: 'center', color: '#64748b', padding: 40, fontSize: 16 },
+  // Modals
+  modalOverlay: { position: 'fixed', inset: 0, background: '#000a', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 },
+  modal: { background: '#0f172a', border: '1px solid #334155', borderRadius: 20, padding: 28, maxWidth: 680, width: '100%', maxHeight: '90vh', overflowY: 'auto' },
+  modalTitle: { fontSize: 20, fontWeight: 700, color: '#D4A843', marginBottom: 20 },
+  formGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 16px' },
+  formField: { display: 'flex', flexDirection: 'column', gap: 5 },
+  label: { fontSize: 12, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: .5 },
+  input: { background: '#080e1a', border: '1px solid #334155', borderRadius: 8, color: '#e2e8f0', padding: '9px 12px', fontSize: 14 },
+  // Buttons
+  btnGold: { background: 'linear-gradient(135deg, #D4A843, #b8891f)', color: '#080e1a', border: 'none', padding: '9px 18px', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: 13 },
+  btnBlue: { background: '#1d4ed833', color: '#60a5fa', border: '1px solid #1d4ed866', padding: '9px 18px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 },
+  btnPurple: { background: '#7c3aed22', color: '#a78bfa', border: '1px solid #7c3aed44', padding: '9px 18px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 },
+  btnGreen: { background: '#15803d22', color: '#34d399', border: '1px solid #15803d44', padding: '9px 18px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 },
+  btnGhost: { background: 'transparent', color: '#94a3b8', border: '1px solid #334155', padding: '9px 18px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 },
+  btnDanger: { background: '#ef444422', color: '#ef4444', border: '1px solid #ef444444', padding: '7px 14px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 },
+};
