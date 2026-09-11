@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Al-Qasr Luxury Realty — Dubai & Saudi Arabia Properties</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: #090d16;
+      color: #f8fafc;
+      font-family: 'Outfit', sans-serif;
+      overflow-x: hidden;
+    }
+
+    /* ── Navbar ── */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 18px 48px;
+      background: rgba(9, 13, 22, 0.88);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+    }
+    .logo-badge {
+      width: 42px;
+      height: 42px;
+      background: linear-gradient(135deg, #d4af37, #f59e0b);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      box-shadow: 0 4px 15px rgba(212, 175, 55, 0.35);
+    }
+    .logo-text h1 {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      background: linear-gradient(135deg, #ffffff, #e2e8f0);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .logo-text span {
+      font-size: 11px;
+      font-weight: 600;
+      color: #d4af37;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+    nav {
+      display: flex;
+      gap: 32px;
+    }
+    nav a {
+      color: #cbd5e1;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    nav a:hover { color: #d4af37; }
+
+    .btn-gold {
+      padding: 12px 24px;
+      background: linear-gradient(135deg, #d4af37, #b8860b);
+      color: #090d16;
+      font-weight: 700;
+      font-size: 14px;
+      border-radius: 30px;
+      border: none;
+      cursor: pointer;
+      box-shadow: 0 4px 18px rgba(212, 175, 55, 0.3);
+      transition: all 0.2s;
+    }
+    .btn-gold:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 25px rgba(212, 175, 55, 0.45);
+    }
+
+    /* ── Hero ── */
+    .hero {
+      min-height: 80vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 80px 24px;
+      background: radial-gradient(circle at 50% 30%, rgba(212, 175, 55, 0.14) 0%, rgba(9, 13, 22, 0.96) 80%),
+                  url('https://images.unsplash.com/photo-1512453979798-5ea266f8880c?w=1600&q=80') center/cover no-repeat;
+      background-blend-mode: overlay;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 18px;
+      background: rgba(212, 175, 55, 0.12);
+      border: 1px solid rgba(212, 175, 55, 0.35);
+      border-radius: 30px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #fbbf24;
+      margin-bottom: 24px;
+    }
+    .hero h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: 56px;
+      font-weight: 700;
+      line-height: 1.15;
+      max-width: 900px;
+      margin-bottom: 20px;
+    }
+    .gold-gradient {
+      background: linear-gradient(135deg, #d4af37, #fef08a, #f59e0b);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero p {
+      font-size: 18px;
+      color: #94a3b8;
+      max-width: 650px;
+      line-height: 1.6;
+      margin-bottom: 40px;
+    }
+
+    /* ── Search Widget ── */
+    .search-box {
+      width: 100%;
+      max-width: 960px;
+      background: rgba(18, 26, 43, 0.92);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(212, 175, 55, 0.25);
+      border-radius: 20px;
+      padding: 24px;
+      box-shadow: 0 20px 45px rgba(0, 0, 0, 0.5);
+      display: grid;
+      grid-template-columns: repeat(4, 1fr) auto;
+      gap: 14px;
+      align-items: center;
+    }
+    .input-wrap {
+      display: flex;
+      flex-direction: column;
+      text-align: left;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 10px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .input-wrap label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #d4af37;
+      margin-bottom: 4px;
+    }
+    .input-wrap select {
+      background: transparent;
+      border: none;
+      color: #f8fafc;
+      font-size: 14px;
+      font-weight: 500;
+      outline: none;
+      cursor: pointer;
+    }
+    .input-wrap select option {
+      background: #121a2b;
+      color: #f8fafc;
+    }
+
+    /* ── Properties Grid ── */
+    .container {
+      max-width: 1240px;
+      margin: 0 auto;
+      padding: 80px 24px;
+    }
+    .section-title {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+    .section-title span {
+      color: #d4af37;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      display: block;
+      margin-bottom: 8px;
+    }
+    .section-title h3 {
+      font-family: 'Playfair Display', serif;
+      font-size: 38px;
+      font-weight: 700;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+      gap: 30px;
+    }
+    .card {
+      background: #111827;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 18px;
+      overflow: hidden;
+      transition: all 0.3s;
+    }
+    .card:hover {
+      transform: translateY(-6px);
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5), 0 0 20px rgba(212, 175, 55, 0.15);
+      border-color: rgba(212, 175, 55, 0.35);
+    }
+    .card img {
+      width: 100%;
+      height: 230px;
+      object-fit: cover;
+    }
+    .card-content {
+      padding: 22px;
+    }
+    .card-price {
+      font-size: 24px;
+      font-weight: 800;
+      color: #d4af37;
+      margin-bottom: 8px;
+    }
+    .card-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .card-desc {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-bottom: 16px;
+      line-height: 1.5;
+    }
+    .card-specs {
+      display: flex;
+      gap: 16px;
+      font-size: 13px;
+      color: #cbd5e1;
+      padding-top: 14px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      margin-bottom: 16px;
+    }
+    .btn-card {
+      width: 100%;
+      padding: 12px;
+      background: rgba(212, 175, 55, 0.12);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      color: #fbbf24;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-card:hover {
+      background: #d4af37;
+      color: #090d16;
+    }
+
+    /* ── Floating Chat Widget Iframe ── */
+    #chat-widget-frame {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      width: 420px;
+      height: 640px;
+      border: none;
+      border-radius: 20px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6), 0 0 25px rgba(212, 175, 55, 0.25);
+      z-index: 9999;
+      display: none;
+    }
+    #chat-launcher-btn {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      padding: 14px 22px;
+      background: linear-gradient(135deg, #d4af37, #f59e0b);
+      color: #090d16;
+      border: none;
+      border-radius: 35px;
+      font-weight: 800;
+      font-size: 15px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 6px 25px rgba(212, 175, 55, 0.45);
+      z-index: 9998;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    #chat-launcher-btn:hover {
+      transform: scale(1.05);
+      box-shadow: 0 8px 30px rgba(212, 175, 55, 0.6);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <a href="#" class="logo">
+      <div class="logo-badge">🏰</div>
+      <div class="logo-text">
+        <h1>AL-QASR REALTY</h1>
+        <span>UAE & SAUDI ARABIA</span>
+      </div>
+    </a>
+    <nav>
+      <a href="#properties">Dubai Portfolio</a>
+      <a href="#properties">Riyadh Portfolio</a>
+      <a href="#properties">Abu Dhabi</a>
+      <a href="#properties">Jeddah</a>
+    </nav>
+    <button class="btn-gold" onclick="toggleChat()">💬 Chat with AI Agent</button>
+  </header>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-badge">✨ Next-Generation Gulf Real Estate AI</div>
+    <h2>Discover Extraordinary Living in <br><span class="gold-gradient">Dubai & Saudi Arabia</span></h2>
+    <p>Explore verified luxury villas, penthouses, and waterfront residences across Dubai and Riyadh with real-time AI property assistance in AED & SAR.</p>
+
+    <!-- Search widget -->
+    <div class="search-box">
+      <div class="input-wrap">
+        <label>City / Region</label>
+        <select id="search-city">
+          <option value="Dubai">Dubai (UAE)</option>
+          <option value="Riyadh">Riyadh (KSA)</option>
+          <option value="Abu Dhabi">Abu Dhabi (UAE)</option>
+          <option value="Jeddah">Jeddah (KSA)</option>
+        </select>
+      </div>
+
+      <div class="input-wrap">
+        <label>Property Type</label>
+        <select id="search-type">
+          <option value="Villa">Luxury Villa</option>
+          <option value="Apartment">Modern Apartment</option>
+          <option value="Townhouse">Townhouse</option>
+          <option value="Penthouse">Penthouse</option>
+        </select>
+      </div>
+
+      <div class="input-wrap">
+        <label>Purpose</label>
+        <select id="search-intent">
+          <option value="buy">For Sale (Buy)</option>
+          <option value="rent">For Rent (Yearly)</option>
+        </select>
+      </div>
+
+      <div class="input-wrap">
+        <label>Budget</label>
+        <select id="search-budget">
+          <option value="1500000">AED/SAR 1.5M - 3M</option>
+          <option value="3500000">AED/SAR 3.5M - 8M</option>
+          <option value="8000000">AED/SAR 8M+</option>
+        </select>
+      </div>
+
+      <button class="btn-gold" style="height: 100%; border-radius: 12px;" onclick="searchWithAI()">
+        🔍 Ask AI Agent
+      </button>
+    </div>
+  </section>
+
+  <!-- Properties -->
+  <section class="container" id="properties">
+    <div class="section-title">
+      <span>Exclusive Listings</span>
+      <h3>Featured Gulf Residences</h3>
+    </div>
+
+    <div class="grid">
+      <!-- 1 -->
+      <div class="card">
+        <img src="https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800&q=80" alt="Dubai Downtown">
+        <div class="card-content">
+          <div class="card-price">AED 1,850,000</div>
+          <div class="card-title">Luxury 2-Bed with Burj Khalifa View</div>
+          <div class="card-desc">Downtown Dubai, UAE • High-floor panoramic skyline view, open-concept kitchen, balcony.</div>
+          <div class="card-specs">
+            <span>🛏️ 2 Beds</span>
+            <span>🛁 2 Baths</span>
+            <span>📐 1,250 sqft</span>
+          </div>
+          <button class="btn-card" onclick="inquireProperty('2-bed apartment in Downtown Dubai for AED 1.85M')">💬 Ask AI About This Home</button>
+        </div>
+      </div>
+
+      <!-- 2 -->
+      <div class="card">
+        <img src="https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=800&q=80" alt="Palm Jumeirah">
+        <div class="card-content">
+          <div class="card-price">AED 8,500,000</div>
+          <div class="card-title">Beachfront Villa on Palm Jumeirah</div>
+          <div class="card-desc">Palm Jumeirah, Dubai • Private beach, infinity pool, landscaped garden, elevator.</div>
+          <div class="card-specs">
+            <span>🛏️ 4 Beds</span>
+            <span>🛁 5 Baths</span>
+            <span>📐 5,200 sqft</span>
+          </div>
+          <button class="btn-card" onclick="inquireProperty('Beachfront Villa on Palm Jumeirah for AED 8.5M')">💬 Ask AI About This Home</button>
+        </div>
+      </div>
+
+      <!-- 3 -->
+      <div class="card">
+        <img src="https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=800&q=80" alt="Riyadh Villa">
+        <div class="card-content">
+          <div class="card-price">SAR 3,200,000</div>
+          <div class="card-title">Modern Luxury Villa in North Riyadh</div>
+          <div class="card-desc">Al Malqa, Riyadh, KSA • Contemporary luxury with private elevator, majlis, driver quarters.</div>
+          <div class="card-specs">
+            <span>🛏️ 5 Beds</span>
+            <span>🛁 6 Baths</span>
+            <span>📐 4,500 sqft</span>
+          </div>
+          <button class="btn-card" onclick="inquireProperty('5-bed villa in Al Malqa Riyadh for SAR 3.2M')">💬 Ask AI About This Home</button>
+        </div>
+      </div>
+
+      <!-- 4 -->
+      <div class="card">
+        <img src="https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800&q=80" alt="Business Bay">
+        <div class="card-content">
+          <div class="card-price">AED 95,000/yr</div>
+          <div class="card-title">Canal View 1-Bed in Business Bay</div>
+          <div class="card-desc">Business Bay, Dubai • Fully furnished waterfront apartment with pool and gym access.</div>
+          <div class="card-specs">
+            <span>🛏️ 1 Bed</span>
+            <span>🛁 2 Baths</span>
+            <span>📐 850 sqft</span>
+          </div>
+          <button class="btn-card" onclick="inquireProperty('1-bed rental in Business Bay for AED 95k')">💬 Ask AI About This Home</button>
+        </div>
+      </div>
+
+      <!-- 5 -->
+      <div class="card">
+        <img src="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800&q=80" alt="Al Yasmin Riyadh">
+        <div class="card-content">
+          <div class="card-price">SAR 150,000/yr</div>
+          <div class="card-title">Spacious Family Villa for Rent</div>
+          <div class="card-desc">Al Yasmin, Riyadh, KSA • Gated family villa with private front yard and majlis.</div>
+          <div class="card-specs">
+            <span>🛏️ 4 Beds</span>
+            <span>🛁 5 Baths</span>
+            <span>📐 3,800 sqft</span>
+          </div>
+          <button class="btn-card" onclick="inquireProperty('4-bed rental villa in Al Yasmin Riyadh for SAR 150k')">💬 Ask AI About This Home</button>
+        </div>
+      </div>
+
+      <!-- 6 -->
+      <div class="card">
+        <img src="https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800&q=80" alt="Corniche Jeddah">
+        <div class="card-content">
+          <div class="card-price">SAR 1,650,000</div>
+          <div class="card-title">Corniche Waterfront Residence</div>
+          <div class="card-desc">Al Shati, Jeddah, KSA • Direct Red Sea panoramic view, luxury amenities, concierge.</div>
+          <div class="card-specs">
+            <span>🛏️ 3 Beds</span>
+            <span>🛁 3 Baths</span>
+            <span>📐 2,100 sqft</span>
+          </div>
+          <button class="btn-card" onclick="inquireProperty('3-bed apartment in Al Shati Jeddah for SAR 1.65M')">💬 Ask AI About This Home</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Floating Launcher Button -->
+  <button id="chat-launcher-btn" onclick="toggleChat()">
+    <span>🤖</span>
+    <span>Chat with Gulf Real Estate AI</span>
+  </button>
+
+  <!-- Floating Chatbot Iframe -->
+  <iframe id="chat-widget-frame" src="/bot/demo-real-estate-live?desktop=true"></iframe>
+
+  <script>
+    let isChatOpen = false;
+    function toggleChat() {
+      const frame = document.getElementById('chat-widget-frame');
+      isChatOpen = !isChatOpen;
+      frame.style.display = isChatOpen ? 'block' : 'none';
+      if (isChatOpen) {
+        document.getElementById('chat-launcher-btn').innerHTML = '<span>❌</span><span>Close Chat</span>';
+      } else {
+        document.getElementById('chat-launcher-btn').innerHTML = '<span>🤖</span><span>Chat with Gulf Real Estate AI</span>';
+      }
+    }
+
+    function inquireProperty(query) {
+      const frame = document.getElementById('chat-widget-frame');
+      frame.style.display = 'block';
+      isChatOpen = true;
+      document.getElementById('chat-launcher-btn').innerHTML = '<span>❌</span><span>Close Chat</span>';
+      try {
+        frame.contentWindow.postMessage({ type: 'SEND_MESSAGE', text: `Hi! Tell me more about ${query}` }, '*');
+      } catch (e) {}
+    }
+
+    function searchWithAI() {
+      const city = document.getElementById('search-city').value;
+      const type = document.getElementById('search-type').value;
+      const intent = document.getElementById('search-intent').value;
+      inquireProperty(`${intent === 'rent' ? 'rentals' : 'properties'} in ${city} for ${type}`);
+    }
+  </script>
+</body>
+</html>

@@ -83,44 +83,44 @@ function getPropertyFactsAndFeatures(prop, index = 0) {
   if (!prop) return {};
 
   const rawPriceStr = prop.price ? String(prop.price).trim() : '';
-  const numVal = parseInt(rawPriceStr.replace(/[^0-9]/g, ''), 10) || 580000;
+  const numVal = parseInt(rawPriceStr.replace(/[^0-9]/g, ''), 10) || 1850000;
   const beds = parseInt(prop.bedrooms) || 3;
   const baths = parseFloat(prop.bathrooms) || 3;
-  const type = prop.property_type ? String(prop.property_type).replace(/_/g, ' ') : 'Single Family Residence';
-  const city = prop.city || (prop.address ? String(prop.address).split(',')[1]?.trim() : 'Mississauga') || 'Mississauga';
+  const type = prop.property_type ? String(prop.property_type).replace(/_/g, ' ') : 'Luxury Villa';
+  const city = prop.city || (prop.address ? String(prop.address).split(',')[1]?.trim() : 'Dubai') || 'Dubai';
   const addr = prop.address ? String(prop.address).split('|')[0] : `Property in ${city}`;
 
   // Living area & lot size
-  const livingArea = prop.living_area || prop.sqft
-    ? String(prop.living_area || prop.sqft)
-    : `${(beds * 480 + 550).toLocaleString()} sq ft`;
-  const livingAreaRange = '1,500 – 2,000 sq ft';
+  const livingArea = prop.living_area || prop.area_sqft || prop.sqft
+    ? String(prop.living_area || prop.area_sqft || prop.sqft)
+    : `${(beds * 600 + 750).toLocaleString()} sq ft`;
+  const livingAreaRange = '1,800 – 3,500 sq ft';
 
-  const lotSize = prop.lot_size || prop.lot
-    ? String(prop.lot_size || prop.lot)
-    : '2,432 Square Feet';
+  const lotSize = prop.lot_size || prop.area_sqm || prop.lot
+    ? String(prop.lot_size || prop.area_sqm || prop.lot)
+    : '3,200 Square Feet';
 
-  const yearBuilt = prop.year_built || prop.yearBuilt || prop.built_year || (2018 + ((index * 2) % 6));
+  const yearBuilt = prop.year_built || prop.yearBuilt || prop.built_year || (2020 + ((index * 2) % 5));
 
   // Description & Highlights
   const description = prop.description
     || prop.remarks
     || prop.listing_description
-    || `Spectacular ${type.toLowerCase()} located in desirable ${city}. This property features ${beds} bedrooms and ${baths} bathrooms with an open-concept floor plan, gourmet kitchen, natural gas fireplace, and spacious living areas. Fully finished basement with recreation room and convenient proximity to top-rated schools, parks, shopping, transit, and healthcare.`;
+    || `Spectacular ${type.toLowerCase()} located in prestigious ${city}. This property features ${beds} bedrooms and ${baths} bathrooms with modern open layout, high ceilings, fitted kitchen, and panoramic views. Includes private parking, balcony, and easy access to international schools, shopping malls, and prime transport.`;
 
   const highlights = [
-    `Spacious open-concept layout with premium finishes and high ceilings`,
-    `Gourmet kitchen with custom cabinetry, quartz countertops & breakfast area`,
-    `Primary suite on second level with en-suite bath and generous closet space`,
-    `Full finished basement featuring a large recreation room and dedicated laundry`,
-    `Private backyard with sun deck, landscaped lawn and privacy fencing`,
-    `Conveniently located near top-rated schools, transit, shopping, and parks`
+    `Spacious modern layout with premium finishes and floor-to-ceiling windows`,
+    `Fully equipped contemporary kitchen with quality countertops & breakfast bar`,
+    `Master bedroom suite with private en-suite bathroom and walk-in wardrobe`,
+    `Dedicated covered parking space and 24/7 building/community security`,
+    `Private balcony/terrace with attractive neighborhood views`,
+    `Conveniently located near international schools, retail hubs, and major highways`
   ];
 
-  // Annual Tax & MLS
-  const annualTax = prop.annual_tax || prop.property_tax
-    ? String(prop.annual_tax || prop.property_tax)
-    : `C$${Math.round(numVal > 0 ? numVal * 0.0095 : 5472).toLocaleString()}`;
+  // Service Charge / Maintenance
+  const annualTax = prop.annual_tax || prop.service_charges
+    ? String(prop.annual_tax || prop.service_charges)
+    : `AED/SAR ${Math.round(numVal > 0 ? numVal * 0.012 : 18000).toLocaleString()}/yr`;
   
   const mlsId = prop.mls_number || prop.listing_id || prop.mls_id
     || `MLS-${Math.abs(addr.length * 1234567 + (index + 1) * 9876).toString().slice(0, 8)}`;

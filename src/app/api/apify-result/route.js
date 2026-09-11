@@ -537,6 +537,26 @@ const SUPPLEMENT_PHOTO_SETS = [
           { onConflict: 'city' }
         );
 
+        // 3. Also upsert into gulf_city_cache for fast Gulf property retrieval
+        try {
+          const isUAE = ['dubai', 'abu dhabi', 'sharjah', 'ajman', 'ras al khaimah', 'fujairah', 'umm al quwain', 'al ain'].some(c => cityKey.includes(c));
+          const country = isUAE ? 'UAE' : 'Saudi Arabia';
+          const cacheKey = `${cityKey}_${intent || 'buy'}`;
+          await supabase.from('gulf_city_cache').upsert(
+            {
+              city_key: cacheKey,
+              country: country,
+              city: cityToSave,
+              properties: finalToStore,
+              total_count: finalToStore.length,
+              last_scraped_at: new Date().toISOString()
+            },
+            { onConflict: 'city_key' }
+          );
+        } catch (gulfErr) {
+          console.warn('[apify-result] gulf_city_cache save warning:', gulfErr.message);
+        }
+
         if (upsertErr) {
           console.error('[apify-result] Database auto-save error for city_property_data:', upsertErr.message);
         } else {

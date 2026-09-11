@@ -8,213 +8,68 @@ let fuseInstance = null;
 
 
 
-// ─── Comprehensive City → State/Province Auto-Resolver ───────────────────────
-// Covers 500+ major cities across all 50 US states + all Canadian provinces.
-// Used to auto-resolve state when user types just a city name without a state.
+// ─── Comprehensive City → Emirate/Province Auto-Resolver (UAE & Saudi Arabia) ─
+// Covers major cities and prime districts across UAE and Saudi Arabia.
 const CITY_STATE_MAP = {
-  // ── ALABAMA ──
-  birmingham: 'AL', montgomery: 'AL', huntsville: 'AL', mobile: 'AL', tuscaloosa: 'AL',
-  hoover: 'AL', dothan: 'AL', auburn: 'AL', decatur: 'AL', madison: 'AL',
-  // ── ALASKA ──
-  anchorage: 'AK', fairbanks: 'AK', juneau: 'AK', sitka: 'AK', ketchikan: 'AK',
-  // ── ARIZONA ──
-  phoenix: 'AZ', tucson: 'AZ', mesa: 'AZ', chandler: 'AZ', scottsdale: 'AZ',
-  tempe: 'AZ', glendale: 'AZ', gilbert: 'AZ', peoria: 'AZ', surprise: 'AZ',
-  yuma: 'AZ', avondale: 'AZ', flagstaff: 'AZ', goodyear: 'AZ', 'lake havasu city': 'AZ',
-  // ── ARKANSAS ──
-  'little rock': 'AR', 'fort smith': 'AR', fayetteville: 'AR', springdale: 'AR',
-  jonesboro: 'AR', conway: 'AR', rogers: 'AR', bentonville: 'AR',
-  // ── CALIFORNIA ──
-  'los angeles': 'CA', 'san diego': 'CA', 'san jose': 'CA', 'san francisco': 'CA',
-  fresno: 'CA', sacramento: 'CA', 'long beach': 'CA', oakland: 'CA',
-  bakersfield: 'CA', anaheim: 'CA', 'santa ana': 'CA', riverside: 'CA',
-  stockton: 'CA', irvine: 'CA', 'chula vista': 'CA', fremont: 'CA',
-  'san bernardino': 'CA', modesto: 'CA', fontana: 'CA', 'moreno valley': 'CA',
-  glendale: 'CA', 'huntington beach': 'CA', oxnard: 'CA', ontario: 'CA',
-  'santa clarita': 'CA', 'garden grove': 'CA', oceanside: 'CA', 'rancho cucamonga': 'CA',
-  'santa rosa': 'CA', 'elk grove': 'CA', corona: 'CA', 'san buenaventura': 'CA',
-  pasadena: 'CA', hayward: 'CA', salinas: 'CA', 'pomona': 'CA',
-  torrance: 'CA', escondido: 'CA', sunnyvale: 'CA', 'thousand oaks': 'CA',
-  palmdale: 'CA', 'santa barbara': 'CA', 'san mateo': 'CA', 'san leandro': 'CA',
-  concord: 'CA', 'east los angeles': 'CA', visalia: 'CA', 'el monte': 'CA',
-  'santa clara': 'CA', 'simi valley': 'CA', berkeley: 'CA', 'west covina': 'CA',
-  compton: 'CA', 'richmond ca': 'CA', murrieta: 'CA', temecula: 'CA', inglewood: 'CA',
-  // ── COLORADO ──
-  denver: 'CO', 'colorado springs': 'CO', aurora: 'CO', 'fort collins': 'CO',
-  lakewood: 'CO', thornton: 'CO', arvada: 'CO', westminster: 'CO',
-  pueblo: 'CO', 'centennial co': 'CO', boulder: 'CO', 'highlands ranch': 'CO',
-  'greeley co': 'CO', longmont: 'CO',
-  // ── CONNECTICUT ──
-  bridgeport: 'CT', 'new haven': 'CT', hartford: 'CT', stamford: 'CT',
-  waterbury: 'CT', norwalk: 'CT', danbury: 'CT', 'new britain': 'CT',
-  // ── DELAWARE ──
-  wilmington: 'DE', dover: 'DE', newark: 'DE',
-  // ── FLORIDA ──
-  jacksonville: 'FL', miami: 'FL', tampa: 'FL', orlando: 'FL',
-  'st. petersburg': 'FL', 'saint petersburg': 'FL', hialeah: 'FL', 'fort lauderdale': 'FL',
-  tallahassee: 'FL', pembroke: 'FL', hollywood: 'FL', miramar: 'FL',
-  'cape coral': 'FL', gainesville: 'FL', 'coral springs': 'FL', 'miami gardens': 'FL',
-  clearwater: 'FL', 'west palm beach': 'FL', 'pompano beach': 'FL', lakeland: 'FL',
-  davie: 'FL', 'miami beach': 'FL', 'boca raton': 'FL', deltona: 'FL',
-  'palm bay': 'FL', 'fort myers': 'FL', lauderhill: 'FL', daytona: 'FL',
-  'port st. lucie': 'FL', 'port saint lucie': 'FL', sunrise: 'FL', pensacola: 'FL',
-  // ── GEORGIA ──
-  atlanta: 'GA', savannah: 'GA', columbus: 'GA', 'sandy springs': 'GA',
-  macon: 'GA', roswell: 'GA', albany: 'GA', 'johns creek': 'GA',
-  'warner robins': 'GA', alpharetta: 'GA', marietta: 'GA',
-  // ── HAWAII ──
-  honolulu: 'HI', 'east honolulu': 'HI', 'pearl city': 'HI', hilo: 'HI', kailua: 'HI',
-  // ── IDAHO ──
-  boise: 'ID', nampa: 'ID', meridian: 'ID', 'idaho falls': 'ID', pocatello: 'ID',
-  // ── ILLINOIS ──
-  chicago: 'IL', aurora: 'IL', joliet: 'IL', naperville: 'IL', rockford: 'IL',
-  springfield: 'IL', elgin: 'IL', peoria: 'IL', champaign: 'IL', waukegan: 'IL',
-  'morton grove': 'IL', 'schaumburg': 'IL', evanston: 'IL', decatur: 'IL',
-  // ── INDIANA ──
-  indianapolis: 'IN', 'fort wayne': 'IN', evansville: 'IN', 'south bend': 'IN',
-  carmel: 'IN', hammond: 'IN', bloomington: 'IN', gary: 'IN', fishers: 'IN',
-  // ── IOWA ──
-  'des moines': 'IA', 'cedar rapids': 'IA', davenport: 'IA', 'sioux city': 'IA',
-  'iowa city': 'IA', waterloo: 'IA', ames: 'IA',
-  // ── KANSAS ──
-  wichita: 'KS', 'overland park': 'KS', 'kansas city ks': 'KS', olathe: 'KS', topeka: 'KS',
-  // ── KENTUCKY ──
-  louisville: 'KY', lexington: 'KY', 'bowling green': 'KY', owensboro: 'KY',
-  // ── LOUISIANA ──
-  'new orleans': 'LA', 'baton rouge': 'LA', shreveport: 'LA', metairie: 'LA',
-  lafayette: 'LA', 'lake charles': 'LA',
-  // ── MAINE ──
-  portland: 'ME', lewiston: 'ME', bangor: 'ME',
-  // ── MARYLAND ──
-  baltimore: 'MD', 'columbia md': 'MD', germantown: 'MD', 'silver spring': 'MD',
-  waldorf: 'MD', 'frederick md': 'MD', 'glen burnie': 'MD', gaithersburg: 'MD',
-  // ── MASSACHUSETTS ──
-  boston: 'MA', worcester: 'MA', springfield: 'MA', cambridge: 'MA',
-  lowell: 'MA', brockton: 'MA', 'new bedford': 'MA', quincy: 'MA',
-  // ── MICHIGAN ──
-  detroit: 'MI', 'grand rapids': 'MI', warren: 'MI', 'sterling heights': 'MI',
-  'ann arbor': 'MI', lansing: 'MI', flint: 'MI', dearborn: 'MI',
-  'troy mi': 'MI', livonia: 'MI', westland: 'MI', kalamazoo: 'MI',
-  // ── MINNESOTA ──
-  minneapolis: 'MN', 'saint paul': 'MN', 'st paul': 'MN', rochester: 'MN',
-  duluth: 'MN', bloomington: 'MN', 'brooklyn park': 'MN', plymouth: 'MN',
-  // ── MISSISSIPPI ──
-  jackson: 'MS', gulfport: 'MS', southaven: 'MS', hattiesburg: 'MS',
-  // ── MISSOURI ──
-  'kansas city': 'MO', 'st. louis': 'MO', 'saint louis': 'MO', springfield: 'MO',
-  independence: 'MO', columbia: 'MO',
-  // ── MONTANA ──
-  billings: 'MT', missoula: 'MT', 'great falls': 'MT', bozeman: 'MT',
-  // ── NEBRASKA ──
-  omaha: 'NE', lincoln: 'NE', 'bellevue ne': 'NE',
-  // ── NEVADA ──
-  'las vegas': 'NV', henderson: 'NV', reno: 'NV', 'north las vegas': 'NV', sparks: 'NV',
-  // ── NEW HAMPSHIRE ──
-  manchester: 'NH', nashua: 'NH', concord: 'NH',
-  // ── NEW JERSEY ──
-  newark: 'NJ', 'jersey city': 'NJ', paterson: 'NJ', elizabeth: 'NJ',
-  trenton: 'NJ', clifton: 'NJ', camden: 'NJ', 'toms river': 'NJ',
-  // ── NEW MEXICO ──
-  albuquerque: 'NM', 'santa fe': 'NM', 'las cruces': 'NM', 'rio rancho': 'NM',
-  // ── NEW YORK ──
-  'new york': 'NY', 'new york city': 'NY', nyc: 'NY', brooklyn: 'NY',
-  queens: 'NY', bronx: 'NY', buffalo: 'NY', rochester: 'NY',
-  yonkers: 'NY', syracuse: 'NY', albany: 'NY', 'new rochelle': 'NY',
-  manhattan: 'NY', 'staten island': 'NY', 'long island': 'NY',
-  // ── NORTH CAROLINA ──
-  charlotte: 'NC', raleigh: 'NC', greensboro: 'NC', durham: 'NC',
-  'winston-salem': 'NC', 'winston salem': 'NC', fayetteville: 'NC', cary: 'NC',
-  wilmington: 'NC', 'high point': 'NC', concord: 'NC',
-  // ── NORTH DAKOTA ──
-  fargo: 'ND', bismarck: 'ND', 'grand forks': 'ND', minot: 'ND',
-  // ── OHIO ──
-  columbus: 'OH', cleveland: 'OH', cincinnati: 'OH', toledo: 'OH',
-  akron: 'OH', dayton: 'OH', parma: 'OH', youngstown: 'OH',
-  // ── OKLAHOMA ──
-  'oklahoma city': 'OK', tulsa: 'OK', norman: 'OK', 'broken arrow': 'OK',
-  // ── OREGON ──
-  portland: 'OR', eugene: 'OR', 'salem or': 'OR', gresham: 'OR',
-  hillsboro: 'OR', beaverton: 'OR', medford: 'OR',
-  // ── PENNSYLVANIA ──
-  philadelphia: 'PA', pittsburgh: 'PA', allentown: 'PA', erie: 'PA',
-  reading: 'PA', scranton: 'PA', 'bethlehem pa': 'PA', lancaster: 'PA',
-  // ── RHODE ISLAND ──
-  providence: 'RI', cranston: 'RI', warwick: 'RI',
-  // ── SOUTH CAROLINA ──
-  'columbia sc': 'SC', charleston: 'SC', 'north charleston': 'SC', 'mount pleasant': 'SC',
-  // ── SOUTH DAKOTA ──
-  'sioux falls': 'SD', 'rapid city': 'SD',
-  // ── TENNESSEE ──
-  nashville: 'TN', memphis: 'TN', knoxville: 'TN', chattanooga: 'TN',
-  clarksville: 'TN', murfreesboro: 'TN', franklin: 'TN',
-  // ── TEXAS ──
-  houston: 'TX', 'san antonio': 'TX', dallas: 'TX', austin: 'TX',
-  'fort worth': 'TX', 'el paso': 'TX', arlington: 'TX', 'corpus christi': 'TX',
-  plano: 'TX', laredo: 'TX', lubbock: 'TX', garland: 'TX', irving: 'TX',
-  amarillo: 'TX', 'grand prairie': 'TX', brownsville: 'TX', mckinney: 'TX',
-  frisco: 'TX', pasadena: 'TX', mesquite: 'TX', killeen: 'TX',
-  mcallen: 'TX', denton: 'TX', waco: 'TX', carrollton: 'TX',
-  midland: 'TX', lewisville: 'TX', abilene: 'TX', beaumont: 'TX',
-  // ── UTAH ──
-  'salt lake city': 'UT', 'west valley city': 'UT', provo: 'UT', 'west jordan': 'UT',
-  orem: 'UT', sandy: 'UT', ogden: 'UT', 'st. george': 'UT', 'saint george': 'UT',
-  // ── VERMONT ──
-  burlington: 'VT',
-  // ── VIRGINIA ──
-  'virginia beach': 'VA', norfolk: 'VA', chesapeake: 'VA', richmond: 'VA',
-  'newport news': 'VA', alexandria: 'VA', hampton: 'VA', roanoke: 'VA',
-  // ── WASHINGTON ──
-  seattle: 'WA', spokane: 'WA', tacoma: 'WA', vancouver: 'WA',
-  bellevue: 'WA', kent: 'WA', renton: 'WA', kirkland: 'WA', redmond: 'WA',
-  // ── WEST VIRGINIA ──
-  'charleston wv': 'WV', huntington: 'WV',
-  // ── WISCONSIN ──
-  milwaukee: 'WI', madison: 'WI', 'green bay': 'WI', kenosha: 'WI', racine: 'WI',
-  // ── WYOMING ──
-  cheyenne: 'WY', casper: 'WY',
+  // ════════════════════════════════════════════════════════════════════════
+  // UNITED ARAB EMIRATES (UAE)
+  // ════════════════════════════════════════════════════════════════════════
+  // ── DUBAI & PRIME DISTRICTS ──
+  'dubai': 'Dubai', 'downtown dubai': 'Dubai', 'downtown': 'Dubai', 'dubai marina': 'Dubai', 'marina': 'Dubai',
+  'palm jumeirah': 'Dubai', 'palm': 'Dubai', 'business bay': 'Dubai', 'jbr': 'Dubai', 'jumeirah beach residence': 'Dubai',
+  'jvc': 'Dubai', 'jumeirah village circle': 'Dubai', 'jvt': 'Dubai', 'jumeirah village triangle': 'Dubai',
+  'arabian ranches': 'Dubai', 'damac hills': 'Dubai', 'dubai hills': 'Dubai', 'dubai hills estate': 'Dubai',
+  'deira': 'Dubai', 'bur dubai': 'Dubai', 'al barsha': 'Dubai', 'barsha': 'Dubai', 'mirdif': 'Dubai',
+  'jlt': 'Dubai', 'jumeirah lakes towers': 'Dubai', 'difc': 'Dubai', 'meydan': 'Dubai', 'al quoz': 'Dubai',
+  'al sufouh': 'Dubai', 'creek harbour': 'Dubai', 'dubai creek': 'Dubai', 'al furjan': 'Dubai', 'discovery gardens': 'Dubai',
+  'international city': 'Dubai', 'silicon oasis': 'Dubai', 'dso': 'Dubai', 'motor city': 'Dubai', 'sports city': 'Dubai',
+  'jumeirah': 'Dubai', 'umm suqeim': 'Dubai', 'al wasl': 'Dubai', 'city walk': 'Dubai',
+
+  // ── ABU DHABI & PRIME DISTRICTS ──
+  'abu dhabi': 'Abu Dhabi', 'yas island': 'Abu Dhabi', 'yas': 'Abu Dhabi', 'al reem': 'Abu Dhabi', 'al reem island': 'Abu Dhabi',
+  'saadiyat': 'Abu Dhabi', 'saadiyat island': 'Abu Dhabi', 'al raha': 'Abu Dhabi', 'al raha beach': 'Abu Dhabi',
+  'khalifa city': 'Abu Dhabi', 'al maryah island': 'Abu Dhabi', 'al bateen': 'Abu Dhabi', 'al khalidiyah': 'Abu Dhabi',
+  'masdar city': 'Abu Dhabi', 'al reef': 'Abu Dhabi', 'corniche abu dhabi': 'Abu Dhabi', 'al mushrif': 'Abu Dhabi',
+  'al ain': 'Abu Dhabi',
+
+  // ── NORTHERN EMIRATES ──
+  'sharjah': 'Sharjah', 'al majaz': 'Sharjah', 'al nahda': 'Sharjah', 'al qasimia': 'Sharjah', 'muwaileh': 'Sharjah', 'al khan': 'Sharjah',
+  'ajman': 'Ajman', 'al nuaimiya': 'Ajman', 'al rashidiya': 'Ajman', 'emirates city': 'Ajman',
+  'ras al khaimah': 'Ras Al Khaimah', 'rak': 'Ras Al Khaimah', 'al marjan island': 'Ras Al Khaimah', 'mina al arab': 'Ras Al Khaimah', 'al hamra village': 'Ras Al Khaimah',
+  'fujairah': 'Fujairah', 'dibba': 'Fujairah',
+  'umm al quwain': 'Umm Al Quwain', 'uaq': 'Umm Al Quwain',
 
   // ════════════════════════════════════════════════════════════════════════
-  // CANADA
+  // SAUDI ARABIA (KSA)
   // ════════════════════════════════════════════════════════════════════════
-  // ── ONTARIO ──
-  toronto: 'ON', mississauga: 'ON', brampton: 'ON', hamilton: 'ON', london: 'ON',
-  ottawa: 'ON', kingston: 'ON', windsor: 'ON', markham: 'ON', vaughan: 'ON',
-  oakville: 'ON', burlington: 'ON', oshawa: 'ON', barrie: 'ON', milton: 'ON',
-  ajax: 'ON', whitby: 'ON', pickering: 'ON', aurora: 'ON', newmarket: 'ON',
-  'richmond hill': 'ON', 'thunder bay': 'ON', waterloo: 'ON', 'kitchener': 'ON',
-  cambridge: 'ON', brantford: 'ON', sudbury: 'ON', guelph: 'ON',
-  'st. catharines': 'ON', 'saint catharines': 'ON', belleville: 'ON', sarnia: 'ON',
-  sault: 'ON', cornwall: 'ON', peterborough: 'ON',
-  // ── BRITISH COLUMBIA ──
-  vancouver: 'BC', surrey: 'BC', burnaby: 'BC', kelowna: 'BC', abbotsford: 'BC',
-  coquitlam: 'BC', langley: 'BC', victoria: 'BC', delta: 'BC', nanaimo: 'BC',
-  kamloops: 'BC', chilliwack: 'BC', 'prince george': 'BC', 'maple ridge': 'BC',
-  'new westminster': 'BC', 'north vancouver': 'BC', 'west vancouver': 'BC',
-  // ── ALBERTA ──
-  calgary: 'AB', edmonton: 'AB', lethbridge: 'AB', 'red deer': 'AB', airdrie: 'AB',
-  'st. albert': 'AB', 'saint albert': 'AB', sherwood: 'AB', 'grande prairie': 'AB',
-  'medicine hat': 'AB', 'fort mcmurray': 'AB', okotoks: 'AB', 'spruce grove': 'AB',
-  // ── MANITOBA ──
-  winnipeg: 'MB', brandon: 'MB', steinbach: 'MB', thompson: 'MB',
-  // ── SASKATCHEWAN ──
-  saskatoon: 'SK', regina: 'SK', 'prince albert': 'SK', 'moose jaw': 'SK',
-  // ── QUEBEC ──
-  montreal: 'QC', laval: 'QC', 'quebec city': 'QC', gatineau: 'QC', sherbrooke: 'QC',
-  longueuil: 'QC', saguenay: 'QC', levis: 'QC', 'trois-rivieres': 'QC', 'trois rivieres': 'QC',
-  // ── NOVA SCOTIA ──
-  halifax: 'NS', dartmouth: 'NS', truro: 'NS',
-  // ── NEW BRUNSWICK ──
-  moncton: 'NB', 'saint john': 'NB', 'st. john': 'NB', fredericton: 'NB',
-  // ── NEWFOUNDLAND ──
-  "st. john's": 'NL', 'saint johns': 'NL', "corner brook": 'NL',
-  // ── PRINCE EDWARD ISLAND ──
-  charlottetown: 'PE', summerside: 'PE',
-  // ── NORTHWEST TERRITORIES ──
-  yellowknife: 'NT',
-  // ── YUKON ──
-  whitehorse: 'YT',
-  // ── NUNAVUT ──
-  iqaluit: 'NU',
+  // ── RIYADH & PRIME DISTRICTS ──
+  'riyadh': 'Riyadh', 'al malqa': 'Riyadh', 'malqa': 'Riyadh', 'al olaya': 'Riyadh', 'olaya': 'Riyadh',
+  'hittin': 'Riyadh', 'al nakheel': 'Riyadh', 'nakheel': 'Riyadh', 'al yasmin': 'Riyadh', 'yasmin': 'Riyadh',
+  'al sahaha': 'Riyadh', 'al narjis': 'Riyadh', 'narjis': 'Riyadh', 'al aqiq': 'Riyadh', 'aqiq': 'Riyadh',
+  'al mohammadiyyah': 'Riyadh', 'al sulaimaniyah': 'Riyadh', 'al murabba': 'Riyadh', 'qurtubah': 'Riyadh',
+  'al yarmuk': 'Riyadh', 'diplomatic quarter': 'Riyadh', 'dq': 'Riyadh',
+  'diriyah': 'Riyadh', 'al khuzama': 'Riyadh', 'al hamra': 'Riyadh', 'al nada': 'Riyadh',
+
+  // ── JEDDAH & PRIME DISTRICTS ──
+  'jeddah': 'Makkah Region', 'al shati': 'Makkah Region', 'shati': 'Makkah Region',
+  'al zahra': 'Makkah Region', 'al salamah': 'Makkah Region', 'al andalus': 'Makkah Region',
+  'obhur': 'Makkah Region', 'north obhur': 'Makkah Region', 'al naeem': 'Makkah Region', 'al marwah': 'Makkah Region',
+  'corniche jeddah': 'Makkah Region', 'al basateen': 'Makkah Region', 'al rawdah': 'Makkah Region',
+
+  // ── EASTERN PROVINCE (DAMMAM, KHOBAR, JUBAIL) ──
+  'dammam': 'Eastern Province', 'al khobar': 'Eastern Province', 'khobar': 'Eastern Province',
+  'dhahran': 'Eastern Province', 'jubail': 'Eastern Province', 'al ahsa': 'Eastern Province',
+  'hofuf': 'Eastern Province', 'qatif': 'Eastern Province',
+
+  // ── HOLY CITIES & WESTERN REGION ──
+  'makkah': 'Makkah Region', 'mecca': 'Makkah Region',
+  'madinah': 'Madinah Region', 'medina': 'Madinah Region',
+  'taif': 'Makkah Region', 'yanbu': 'Madinah Region',
+
+  // ── NORTHERN & SOUTHERN REGIONS ──
+  'tabuk': 'Tabuk Region', 'abha': 'Asir Region', 'khamis mushait': 'Asir Region',
+  'najran': 'Najran Region', 'jizan': 'Jizan Region', 'jazan': 'Jizan Region',
+  'buraidah': 'Al Qassim', 'unaizah': 'Al Qassim', 'hail': 'Hail Region'
 };
 
 // ─── Levenshtein Distance for Fuzzy City Matching ────────────────────────────
@@ -286,7 +141,8 @@ async function autocorrectCityWithAI(rawCity, stateHint = '') {
   const norm = normalizeCityName(clean);
   const knownState = CITY_STATE_MAP[norm.toLowerCase()];
   if (knownState) {
-    const result = { city: norm, state: stateHint || knownState, country: knownState === 'ON' || knownState === 'BC' || knownState === 'AB' ? 'Canada' : 'USA' };
+    const isUAE = ['Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman', 'Ras Al Khaimah', 'Fujairah', 'Umm Al Quwain'].includes(knownState);
+    const result = { city: norm, state: stateHint || knownState, country: isUAE ? 'UAE' : 'Saudi Arabia' };
     AI_CITY_CACHE.set(cacheKey, result);
     return result;
   }
@@ -307,7 +163,7 @@ async function autocorrectCityWithAI(rawCity, stateHint = '') {
       messages: [
         {
           role: "system",
-          content: "You are a real estate geographic entity resolver for North America (USA & Canada). Given any user query with a city name (which may contain typos, misspellings, or slang), resolve it to the exact official City Name and 2-letter state/province code. Return ONLY valid JSON: {\"city\": \"Exact City Name\", \"state\": \"2-letter state/province code\", \"country\": \"USA\" or \"Canada\"}. Example: \"morten grov\" -> {\"city\": \"Morton Grove\", \"state\": \"IL\", \"country\": \"USA\"}. Example: \"miltn\" -> {\"city\": \"Milton\", \"state\": \"ON\", \"country\": \"Canada\"}. Return JSON only."
+          content: "You are a real estate geographic entity resolver for the United Arab Emirates (UAE) and Saudi Arabia (KSA). Given any user query with a city, district, or area name (which may contain typos, misspellings, or Arabic transliterations), resolve it to the exact official City/Area Name and Emirate/Region. Return ONLY valid JSON: {\"city\": \"Exact City Name\", \"state\": \"Emirate or Region\", \"country\": \"UAE\" or \"Saudi Arabia\"}. Example: \"dubay\" -> {\"city\": \"Dubai\", \"state\": \"Dubai\", \"country\": \"UAE\"}. Example: \"riyad\" -> {\"city\": \"Riyadh\", \"state\": \"Riyadh\", \"country\": \"Saudi Arabia\"}. Example: \"marina\" -> {\"city\": \"Dubai\", \"state\": \"Dubai Marina\", \"country\": \"UAE\"}. Return JSON only."
         },
         {
           role: "user",
@@ -1181,20 +1037,25 @@ const SUPPLEMENT_PHOTO_SETS = [
   ]
 ];
 
-// ─── Universal Budget Parser ───────────────────────────────────────────────
-// Handles: 990k, 870K, 1.2m, 7M, 4 million, $1,200,000, 650000, $900k - $1.2M, $2,000–$2,500/mo, under 800k, 500 thousand, C$799,900, etc.
+// ─── Universal Budget Parser (UAE AED, Saudi SAR, and Global) ─────────────
+// Handles: AED 1.8M, SAR 2,500,000, 95k/yr, 75000, 1.2 million, 25 lakh, 850k, etc.
 function parseBudget(text) {
   if (!text) return 0;
   if (typeof text === 'number') return text > 0 ? text : 0;
   const t = String(text).toLowerCase().trim();
 
-  // 1. Range support for k/m: e.g. '$900k - $1.2M' or '600k - 800k' -> pick highest maximum budget
-  const millionMatches = [...t.matchAll(/([\d]+(?:\.[\d]+)?)\s*(?:m|million)\b/g)];
+  // 1. Range support for Millions & Lakhs
+  const millionMatches = [...t.matchAll(/([\d]+(?:\.[\d]+)?)\s*(?:m|million|mn)\b/g)];
+  const lakhMatches = [...t.matchAll(/([\d]+(?:\.[\d]+)?)\s*(?:lakh|lac|lacs)\b/g)];
   const kMatches = [...t.matchAll(/([\d]+(?:\.[\d]+)?)\s*(?:k|thousand)\b/g)];
   
   let maxBudget = 0;
   for (const m of millionMatches) {
     const val = Math.round(parseFloat(m[1]) * 1_000_000);
+    if (val > maxBudget) maxBudget = val;
+  }
+  for (const l of lakhMatches) {
+    const val = Math.round(parseFloat(l[1]) * 100_000);
     if (val > maxBudget) maxBudget = val;
   }
   for (const k of kMatches) {
@@ -1203,11 +1064,11 @@ function parseBudget(text) {
   }
   if (maxBudget > 0) return maxBudget;
 
-  // 2. Range support for standard numbers: e.g. '$2,000–$2,500/mo', '$500,000 - $700,000', '2000 to 2500'
-  // Extract all distinct numeric values (with optional commas/decimals)
-  const numMatches = [...t.matchAll(/\$?([0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?)/g)];
+  // 2. Standard numbers extraction (strips AED, SAR, Dhs, SR, $, etc.)
+  const numMatches = [...t.matchAll(/(?:aed|sar|dhs|dh|sr|riyal|dirham|\$)?\s*([0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?)/g)];
   if (numMatches.length > 0) {
     for (const nm of numMatches) {
+      if (!nm[1]) continue;
       const cleanNum = parseFloat(nm[1].replace(/,/g, ''));
       if (cleanNum > maxBudget) {
         maxBudget = Math.round(cleanNum);
@@ -1216,8 +1077,9 @@ function parseBudget(text) {
     if (maxBudget > 0) return maxBudget;
   }
 
-  // 3. Fallback direct clean digits parsing (removes $, C$, CAD, spaces)
-  const digits = t.replace(/,/g, '').replace(/[^0-9]/g, '');
+  // 3. Fallback clean digits
+  const cleanT = t.replace(/(?:aed|sar|dhs|dh|sr|riyal|dirham|usd|cad|\$)/gi, ' ');
+  const digits = cleanT.replace(/,/g, '').replace(/[^0-9]/g, '');
   if (digits && digits.length >= 3) {
     return parseInt(digits, 10);
   }
@@ -1337,43 +1199,76 @@ function selectRecommendedProperties(properties, targetBudget = 0, targetBeds = 
   return { results: selected, matchTier: 'exact' };
 }
 
-// 🏡 Fetch listings from city_property_data (Apify real data) & properties table
+// 🏡 Fetch listings from gulf_city_cache, gulf_properties & fallback tables
 async function fetchCityPropertyData(botId, targetCity, intent = 'buy', propBudget = 0, propBeds = 0, propBaths = 0, fullChatText = '', propType = null, targetState = null) {
   try {
     const cleanCity = (targetCity || '').split(',')[0].trim();
     const isRentIntent = intent === 'rent';
-    let cityQuery = supabase.from('city_property_data').select('city, properties');
-    // Use exact ilike without wildcards so Milton does NOT match Hamilton
-    if (cleanCity) cityQuery = cityQuery.ilike('city', cleanCity);
-    const { data: cityRows, error: cityError } = await cityQuery.limit(5);
-
-    console.log(`fetchCityPropertyData: city_property_data query. CleanCity: "${cleanCity}". State: "${targetState || 'any'}". Intent: "${intent}". Beds: ${propBeds}. Baths: ${propBaths}. Budget: ${propBudget}. Type: "${propType}". Rows: ${cityRows?.length || 0}. Error: ${cityError?.message || 'none'}`);
-
-    // Flatten all properties from matched rows
     let allProperties = [];
-    if (!cityError && cityRows && cityRows.length > 0) {
-      cityRows.forEach(row => {
-        if (row.properties && Array.isArray(row.properties)) {
-          allProperties = allProperties.concat(row.properties);
-        }
-      });
-    }
 
-    // Also check properties table (same city) if we don't have enough
-    if (allProperties.length < 4) {
-      const { data: tableProps } = await supabase
-        .from('properties')
-        .select('*')
+    // 1. Try gulf_city_cache first
+    const cacheKey = `${cleanCity.toLowerCase()}_${isRentIntent ? 'rent' : 'buy'}`;
+    const { data: gulfCacheRow } = await supabase
+      .from('gulf_city_cache')
+      .select('properties')
+      .eq('city_key', cacheKey)
+      .maybeSingle();
+
+    if (gulfCacheRow && Array.isArray(gulfCacheRow.properties) && gulfCacheRow.properties.length > 0) {
+      allProperties.push(...gulfCacheRow.properties);
+    } else if (cleanCity) {
+      const { data: gulfCacheRows } = await supabase
+        .from('gulf_city_cache')
+        .select('properties')
         .ilike('city', cleanCity)
-        .limit(10);
-      if (tableProps && tableProps.length > 0) {
-        allProperties = allProperties.concat(tableProps);
+        .limit(3);
+      if (gulfCacheRows && gulfCacheRows.length > 0) {
+        gulfCacheRows.forEach(r => {
+          if (Array.isArray(r.properties)) allProperties.push(...r.properties);
+        });
       }
     }
 
-    // City not in DB → return empty so caller triggers live Apify search
+    // 2. Query gulf_properties table
+    if (allProperties.length < 4 && cleanCity) {
+      let gulfQuery = supabase
+        .from('gulf_properties')
+        .select('*')
+        .ilike('city', cleanCity);
+      if (isRentIntent) {
+        gulfQuery = gulfQuery.eq('listing_type', 'rent');
+      } else {
+        gulfQuery = gulfQuery.eq('listing_type', 'buy');
+      }
+      const { data: gulfDirect } = await gulfQuery.limit(20);
+      if (gulfDirect && gulfDirect.length > 0) {
+        allProperties.push(...gulfDirect);
+      }
+    }
+
+    // 3. Fallback to city_property_data / properties if still empty
+    if (allProperties.length === 0 && cleanCity) {
+      let cityQuery = supabase.from('city_property_data').select('city, properties').ilike('city', cleanCity);
+      const { data: cityRows } = await cityQuery.limit(5);
+      if (cityRows && cityRows.length > 0) {
+        cityRows.forEach(row => {
+          if (row.properties && Array.isArray(row.properties)) {
+            allProperties = allProperties.concat(row.properties);
+          }
+        });
+      }
+      if (allProperties.length < 4) {
+        const { data: tableProps } = await supabase.from('properties').select('*').ilike('city', cleanCity).limit(10);
+        if (tableProps && tableProps.length > 0) {
+          allProperties = allProperties.concat(tableProps);
+        }
+      }
+    }
+
+    console.log(`fetchCityPropertyData: cleanCity="${cleanCity}" intent="${intent}" beds=${propBeds} budget=${propBudget} found=${allProperties.length} items`);
+
     if (allProperties.length === 0) {
-      console.log(`fetchCityPropertyData: No data found for city="${cleanCity}" in DB — caller will trigger live Apify.`);
+      console.log(`fetchCityPropertyData: No data found for city="${cleanCity}" in DB.`);
       return { text: '', rawProperties: [] };
     }
 
@@ -1383,69 +1278,36 @@ async function fetchCityPropertyData(botId, targetCity, intent = 'buy', propBudg
       const cityWordRegex = new RegExp(`\\b${targetCityNorm}\\b`, 'i');
       const strictCity = filteredData.filter(item => {
         const itemCity = String(item.city || '').toLowerCase().trim();
-        return itemCity === targetCityNorm || cityWordRegex.test(itemCity);
+        const itemDistrict = String(item.area_district || '').toLowerCase().trim();
+        return itemCity === targetCityNorm || itemDistrict === targetCityNorm || cityWordRegex.test(itemCity) || cityWordRegex.test(itemDistrict);
       });
       if (strictCity.length > 0) {
         filteredData = strictCity;
-      } else {
-        console.log(`fetchCityPropertyData: 0 DB properties matched strict city "${cleanCity}" — falling back to live Apify scrape.`);
-        return { text: '', rawProperties: [] };
       }
     }
 
-    // ── STATE / PROVINCE GUARD: Prevent cross-state / US vs Canada city collisions (e.g. Aurora IL vs Aurora ON) ──
-    if (targetState) {
-      const stateClean = targetState.toUpperCase().trim();
-      const stateMatches = filteredData.filter(item => {
-        const itemState = String(item.province || item.state || '').toUpperCase().trim();
-        const itemAddr = String(item.address || item.address_full || '').toUpperCase();
-        // If state field is completely empty (common for Canadian cities from Zillow data), allow it through
-        if (!itemState) return true;
-        if (stateClean === 'IL') return itemState === 'IL' || itemState.includes('ILLINOIS');
-        if (stateClean === 'ON') return itemState === 'ON' || itemState.includes('ONTARIO') || itemState === '';
-        if (stateClean === 'MO') return itemState === 'MO' || itemState.includes('MISSOURI');
-        if (stateClean === 'TX') return itemState === 'TX' || itemState.includes('TEXAS');
-        if (stateClean === 'CA') return itemState === 'CA' || itemState.includes('CALIFORNIA');
-        if (stateClean === 'FL') return itemState === 'FL' || itemState.includes('FLORIDA');
-        if (stateClean === 'NY') return itemState === 'NY' || itemState.includes('YORK');
-        return itemState === stateClean || itemAddr.includes(`, ${stateClean} `) || itemAddr.includes(`, ${stateClean},`) || itemAddr.endsWith(`, ${stateClean}`);
-      });
-      if (stateMatches.length === 0) {
-        console.log(`fetchCityPropertyData: 0 DB properties matched requested state="${targetState}" for city="${cleanCity}" — falling back to live Apify scrape.`);
-        return { text: '', rawProperties: [] };
-      }
-      filteredData = stateMatches;
-    }
-
-    // ── INTENT FILTER: rent vs buy ──────────────────────────────────────────
+    // ── INTENT FILTER: rent vs buy ──
     if (isRentIntent) {
       const rentOnly = filteredData.filter(item => {
-        const status = String(item.listing_status || item.status || '').toLowerCase();
-        const priceStr = String(item.price || '').toLowerCase();
-        const priceNum = parseBudget(priceStr);
-        return status.includes('rent') || priceStr.includes('/mo') || priceStr.includes('per month') || (priceNum > 0 && priceNum < 35000);
+        const status = String(item.listing_type || item.listing_status || item.status || '').toLowerCase();
+        const priceStr = String(item.price_display || item.price || '').toLowerCase();
+        return status.includes('rent') || priceStr.includes('/yr') || priceStr.includes('yearly') || priceStr.includes('/mo') || priceStr.includes('per month');
       });
-      if (rentOnly.length < 2) {
-        console.log(`fetchCityPropertyData: No rent listings found for city="${cleanCity}" — falling back to live Apify rent search.`);
-        return { text: '', rawProperties: [] };
+      if (rentOnly.length > 0) {
+        filteredData = rentOnly;
       }
-      filteredData = rentOnly;
     } else {
       const saleOnly = filteredData.filter(item => {
-        const status = String(item.listing_status || item.status || '').toLowerCase();
-        const priceStr = String(item.price || '').toLowerCase();
-        const priceNum = parseBudget(priceStr);
-        return !status.includes('rent') && !priceStr.includes('/mo') && !priceStr.includes('per month') && priceNum >= 35000;
+        const status = String(item.listing_type || item.listing_status || item.status || '').toLowerCase();
+        const priceStr = String(item.price_display || item.price || '').toLowerCase();
+        return !status.includes('rent') && !priceStr.includes('/yr') && !priceStr.includes('/mo');
       });
-      if (saleOnly.length >= 2) {
+      if (saleOnly.length > 0) {
         filteredData = saleOnly;
-      } else {
-        console.log(`fetchCityPropertyData: Less than 2 for-sale listings for city="${cleanCity}" in DB — falling back to live Apify scrape.`);
-        return { text: '', rawProperties: [] };
       }
     }
 
-    // ── PROPERTY TYPE GUARD: If user wants a specific type and 0 DB properties match → live Apify scrape ──
+    // ── PROPERTY TYPE GUARD ──
     if (propType) {
       const typeMatches = filteredData.filter(item => propTypeMatches(item, propType));
       if (typeMatches.length > 0) {
@@ -2384,14 +2246,15 @@ CRITICAL INSTRUCTIONS:
             const recommendedRaw = recommended.results || recommended; // backward compat
             const matchTier = recommended.matchTier || 'exact';
 
-            if (recommendedRaw.length >= cardsLimit) {
-                // ✅ DIRECT RETURN: full 4-card batch found in CRM/DB
+            if (recommendedRaw.length >= 1) {
+                // ✅ DIRECT RETURN: matching properties found in CRM/DB
                 const SUPPLEMENT_PHOTO_SETS_LOCAL = SUPPLEMENT_PHOTO_SETS || [];
                 const structuredProps = recommendedRaw.slice(0, cardsLimit).map((l, i) => {
                   let rawPhotos = [];
                   if (Array.isArray(l.images) && l.images.length > 0) rawPhotos = l.images;
                   else if (Array.isArray(l.photos) && l.photos.length > 0) rawPhotos = l.photos.map(p => (typeof p === 'string' ? p : p.url)).filter(Boolean);
                   else if (Array.isArray(l.carouselPhotos) && l.carouselPhotos.length > 0) rawPhotos = l.carouselPhotos.map(p => (typeof p === 'string' ? p : p.url)).filter(Boolean);
+                  else if (l.main_image) rawPhotos = [l.main_image];
                   else if (l.image_url) rawPhotos = [l.image_url];
                   else if (l.imgSrc) rawPhotos = [l.imgSrc];
                   const isRealImg = (u) => u && typeof u === 'string' && !u.includes('maps.googleapis.com') && !u.includes('staticmap');
@@ -2400,58 +2263,59 @@ CRITICAL INSTRUCTIONS:
                     const supplement = SUPPLEMENT_PHOTO_SETS_LOCAL[i % SUPPLEMENT_PHOTO_SETS_LOCAL.length];
                     imgArr = imgArr.length > 0 ? [imgArr[0], ...supplement] : supplement;
                   }
-                  const rawAddr = (l.address || '').trim();
+                  const rawAddr = (l.address || l.area_district || '').trim();
                   const propCity = l.city || detectedCity || '';
-                  const propProv = l.province || l.state || '';
+                  const propCountry = l.country || (['dubai', 'abu dhabi', 'sharjah', 'ajman', 'ras al khaimah', 'fujairah', 'umm al quwain', 'al ain'].some(c => propCity.toLowerCase().includes(c)) ? 'UAE' : 'Saudi Arabia');
                   const cleanAddr = rawAddr && propCity && rawAddr.toLowerCase().includes(propCity.toLowerCase())
                     ? rawAddr
-                    : `${rawAddr}${propCity ? ', ' + propCity : ''}${propProv ? ', ' + propProv : ''}`.replace(/^, | , |, $/g, '').trim();
+                    : `${rawAddr}${propCity ? ', ' + propCity : ''}${propCountry ? ', ' + propCountry : ''}`.replace(/^, | , |, $/g, '').trim();
+
+                  const curr = l.currency || (propCountry === 'UAE' ? 'AED' : 'SAR');
+                  let displayPrice = l.price_display || l.priceDisplay || '';
+                  if (!displayPrice && l.price) {
+                    displayPrice = typeof l.price === 'number' ? `${curr} ${l.price.toLocaleString()}${propIntent === 'rent' ? '/yr' : ''}` : String(l.price);
+                  } else if (!displayPrice) {
+                    displayPrice = 'Contact for Price';
+                  }
 
                   return {
                     address: cleanAddr,
-                    price: l.price ? (typeof l.price === 'number' ? `$${l.price.toLocaleString()}` : l.price) : (l.priceDisplay || 'Contact for Price'),
+                    price: displayPrice,
                     bedrooms: String(l.bedrooms || l.beds || ''),
                     bathrooms: String(l.bathrooms || l.baths || ''),
-                    property_type: l.propertyType || l.property_type || l.homeType || l.type || 'Single Family Home',
+                    property_type: l.property_type || l.propertyType || l.home_type || l.homeType || l.type || 'Villa',
                     city: l.city || detectedCity,
-                    province: l.province || l.state || '',
+                    country: propCountry,
                     image_url: imgArr[0] || '',
                     images: imgArr.slice(0, 8),
-                    url: l.url || l.propertyUrl || l.detailUrl || (l.zpid ? `https://www.zillow.com/homedetails/${l.zpid}_zpid/` : '#'),
-                    listing_status: l.listing_status || (propIntent === 'rent' ? '🔵 For Rent' : '🟢 For Sale'),
-                    mls_number: l.mls_number || l.mlsNumber || l.zpid || '',
-                    living_area: l.living_area || l.livingArea || l.sqft || null,
+                    url: l.source_url || l.url || l.propertyUrl || l.detailUrl || (l.zpid ? `https://www.zillow.com/homedetails/${l.zpid}_zpid/` : '#'),
+                    listing_status: l.listing_type === 'rent' || l.listing_status?.includes('Rent') || propIntent === 'rent' ? '🔵 For Rent' : '🟢 For Sale',
+                    mls_number: l.property_id || l.mls_number || l.mlsNumber || l.zpid || '',
+                    living_area: l.area_sqft || l.area_sqm || l.living_area || l.livingArea || l.sqft || null,
                     lot_size: l.lot_size || l.lotSize || null,
                     year_built: l.year_built || l.yearBuilt || null,
-                    description: l.description || null,
-                    stories: l.stories || null,
+                    description: l.description || l.title || null,
                     parking: l.parking || l.garageSpaces || null,
-                    heating: l.heating || null,
-                    cooling: l.cooling || null,
-                    basement: l.basement || null,
-                    fireplace: l.fireplace || null,
-                    materials: l.materials || null,
-                    foundation: l.foundation || null,
-                    roof: l.roof || null,
-                    annual_tax: l.annual_tax || l.annualTax || null
+                    portal_name: l.portal_name || 'PropertyFinder',
+                    agent_name: l.agent_name || null,
+                    agent_phone: l.agent_phone || null
                   };
                 });
 
                 const cityBtnsList = !isShowMoreRequest ? [
-                  '🏫 Schools', '🌳 Parks', '🚇 Transportation', '🛒 Shopping & Dining',
-                  '🏥 Healthcare', '🏡 Neighborhood', '🏘️ Housing Market', '👥 Community', '💡 Buyer Tips'
+                  '🏫 International Schools', '🌳 Parks & Greenery', '🚇 Metro & Transport', '🛒 Malls & Dining',
+                  '🏥 Healthcare & Clinics', '🏡 Community & Lifestyle', '📈 Market Trends', '💡 Buyer Guide'
                 ] : [];
 
-                const formatPriceNum = (num) => num ? `$${Number(num).toLocaleString()}` : '';
                 const typeName = propType ? propType.replace(/[🏘️🏠🏡🏗️]/gu, '').trim() : '';
 
                 let matchIntro;
                 if (isShowMoreRequest) {
-                  matchIntro = `Here are ${structuredProps.length} more ${typeName ? typeName + ' ' : ''}properties in **${detectedCity}** (lowest price first): 🏡`;
+                  matchIntro = `Here are ${structuredProps.length} more ${typeName ? typeName + ' ' : ''}properties in **${detectedCity}**: 🏡`;
                 } else if (matchTier === 'type_relaxed') {
-                  matchIntro = `${typeName ? typeName + ' homes' : 'Homes'} in your exact budget range aren't available in **${detectedCity}** right now — but here are the closest available properties in **${detectedCity}** (sorted by lowest price first): 🏡`;
+                  matchIntro = `Here are the closest available ${typeName ? typeName + ' ' : ''}properties in **${detectedCity}**: 🏡`;
                 } else {
-                  matchIntro = `Here are live ${typeName ? typeName + ' ' : ''}properties in **${detectedCity}** matching your preferences (sorted by lowest price first): 🏡`;
+                  matchIntro = `Here are live ${typeName ? typeName + ' ' : ''}properties in **${detectedCity}** matching your preferences: 🏡`;
                 }
 
                 const introText = matchIntro + (cityBtnsList.length > 0 ? `\n\n${cityBtnsList.map(b => `[CITY_BTN: ${b}]`).join(' ')}` : '');
@@ -2620,16 +2484,16 @@ You MUST follow this exact 10-step flow strictly. Do not skip steps. Ask ONE que
 When asking a question that has predefined options, append \`[BUTTON: Option 1] [BUTTON: Option 2]\` at the very end of your message to render clickable buttons in the UI.
 
 Step 1. Ask what type of property they are looking for:
-"Are you looking for a family home, a first home, or an investment property?"
-[BUTTON: Family Home] [BUTTON: Investment Property]
+"Are you looking for a luxury villa, modern apartment, townhouse, or penthouse?"
+[BUTTON: 🏰 Villa] [BUTTON: 🏢 Apartment] [BUTTON: 🏡 Townhouse] [BUTTON: 🌆 Penthouse]
 
-Step 1b. IMMEDIATELY after the user selects Family Home or Investment Property, respond with EXACTLY this trust message (replace [AGENT_NAME] with ${botName}):
-"Great! 🏡 ${botName} has helped 20+ families find their perfect home in the area, so you're in great hands! I'll ask you a few quick questions to understand exactly what you're looking for."
+Step 1b. IMMEDIATELY after the user selects their property type, respond with EXACTLY this trust message (replace [AGENT_NAME] with ${botName}):
+"Great! 🏡 ${botName} has helped 20+ clients find their ideal properties in the region, so you're in great hands! I'll ask you a few quick questions to find your exact match."
 Then immediately proceed to Step 2 question on the SAME message (no extra confirmation needed).
 
-Step 2. Ask for preferred city/location AND province:
-"Which city or area are you interested in? Please also mention the province or state (e.g., 'Milton, Ontario')."
-IMPORTANT: If the user replies with ONLY the city name (e.g., "Toronto"), you MUST politely ask them which province or state it is in BEFORE moving to the next step. If they provide both the city and province/state, simply move to the next step without asking for confirmation.
+Step 2. Ask for preferred city/location in UAE or Saudi Arabia:
+"Which city or area are you interested in? (e.g., Dubai, Abu Dhabi, Riyadh, Jeddah, Sharjah, etc.)"
+If the user specifies a city or prime district (e.g. "Dubai", "Riyadh", "Downtown", "Al Malqa"), accept it with enthusiasm and immediately proceed to Step 3.
 
 Step 3a. Ask for bedrooms ONLY:
 "How many bedrooms are you looking for?"
@@ -2638,35 +2502,30 @@ Step 3b. After getting bedrooms, ask for bathrooms ONLY:
 "And how many bathrooms would you like?"
 
 Step 4. Ask if they are a first-time buyer:
-"Are you a first time buyer?"
+"Are you a first-time property buyer in the region?"
 [BUTTON: Yes] [BUTTON: No]
 
-Step 5. Ask about school requirements using MULTI_BUTTON tags (user can select multiple):
-"Do you have any specific school requirements or preferences? (e.g. Elementary, Middle, High School)"
-[MULTI_BUTTON: Elementary School] [MULTI_BUTTON: Middle School] [MULTI_BUTTON: High School]
+Step 5. Ask about school and facility preferences using MULTI_BUTTON tags (user can select multiple):
+"Do you have any specific preferences for nearby facilities or schools?"
+[MULTI_BUTTON: International Schools] [MULTI_BUTTON: Near Metro / Transport] [MULTI_BUTTON: Shopping Malls] [MULTI_BUTTON: Mosques]
 
 Step 6. Ask about specific features using MULTI_BUTTON tags (user can select multiple):
 "Are there any important features you're hoping for? You can select multiple options!"
-[MULTI_BUTTON: Garage] [MULTI_BUTTON: Finished Basement] [MULTI_BUTTON: Swimming Pool] [MULTI_BUTTON: Backyard] [MULTI_BUTTON: New Construction]
+[MULTI_BUTTON: Private Pool] [MULTI_BUTTON: Balcony / Terrace] [MULTI_BUTTON: Maids Room] [MULTI_BUTTON: Covered Parking] [MULTI_BUTTON: Sea / Skyline View]
 
 Step 7. Ask for their budget:
-"What is your budget?"
+"What is your maximum budget? (e.g., AED 2M or SAR 3M)"
 
 Step 8. Ask for timeline:
 "Thanks! When are you planning to purchase?"
-[BUTTON: Within 3 months] [BUTTON: In next 6 months] [BUTTON: Not decided]
+[BUTTON: Within 3 months] [BUTTON: In next 6 months] [BUTTON: Exploring options]
 
-Step 9. Ask for pre-approval status:
-"Have you been pre-approved for a mortgage?"
-[BUTTON: Yes] [BUTTON: No]
-
-Step 9b. Pre-Approval Letter Upload:
-If the user says "Yes" (they are pre-approved), respond with:
-"Great! 📄 Please upload your mortgage pre-approval letter below, or choose to provide it later."
-[REQUEST_PREAPPROVAL_UPLOAD]
+Step 9. Ask for pre-approval / financing status:
+"Have you arranged financing or mortgage pre-approval, or are you a cash buyer?"
+[BUTTON: Cash Buyer] [BUTTON: Mortgage Pre-Approved] [BUTTON: Need Mortgage Assistance]
 
 Step 9c. Ask about real estate agent:
-"Are you currently working with any other real estate agent?"
+"Are you currently working with another real estate agent?"
 [BUTTON: Yes] [BUTTON: No]
 
 IMPORTANT RULE FOR AGENT REPRESENTATION:
@@ -2679,18 +2538,18 @@ If the user answers "No" to working with another real estate agent:
 Proceed to Step 10 (Summarize and Confirm).
 
 Step 10. Summarize and Confirm:
-Once all information is collected (including agent status from Step 9b/9c), you MUST generate a summary and ask for confirmation using EXACTLY this format:
+Once all information is collected (including agent status from Step 9c), you MUST generate a summary and ask for confirmation using EXACTLY this format:
 
-Here's what I have for your home search:
-Location: [City, State]
+Here's what I have for your property search:
+Location: [City, Emirate/Region, Country]
 Property: [Property Type]
 Bedrooms: [Bedrooms]
 Bathrooms: [Bathrooms]
 Important features: [Features]
-School preference: [School]
-Maximum budget: [Budget]
-First-time buyer: [Yes/No]
-Mortgage: [Pre-approved / Not pre-approved]
+Facility preference: [Facilities]
+Maximum budget: [Budget in AED / SAR]
+Buyer status: [First-time / Experienced]
+Financing: [Cash / Pre-approved]
 Purchase timeline: [Timeline]
 Currently working with an agent: [Yes/No]
 
@@ -2735,12 +2594,12 @@ DO NOT ask for their name, phone, or email manually. The [START_LEAD_CAPTURE] ta
 PATH 2 — RENTING A PROPERTY:
 If the user is looking to rent a property, you MUST follow this exact qualification flow strictly. Ask ONE question at a time.
 Step 1. Identify Property Type:
-"Are you looking to rent an apartment, condo, townhouse, or house?"
-[BUTTON: 🏢 Apartment/Condo] [BUTTON: 🏘️ Townhouse] [BUTTON: 🏡 Detached House] [BUTTON: 🏢 Multi-Family] [BUTTON: 🤷 Flexible]
+"Are you looking to rent an apartment, villa, townhouse, or penthouse?"
+[BUTTON: 🏢 Apartment] [BUTTON: 🏰 Villa] [BUTTON: 🏡 Townhouse] [BUTTON: 🌆 Penthouse] [BUTTON: 🤷 Flexible]
 
 Step 2. Location (VERY IMPORTANT — ask this before other requirements):
-"Which city or area are you looking to rent in? (Please mention city and state, e.g., 'Chicago, IL')"
-IMPORTANT: If the user replies with ONLY the city name (e.g., "Chicago"), you MUST politely ask them which province or state it is in BEFORE moving to the next step. If they provide both the city and province/state, simply move to the next step without asking for confirmation.
+"Which city or area are you looking to rent in? (e.g., Dubai, Abu Dhabi, Riyadh, Jeddah, Sharjah)"
+If the user specifies a city or prime district (e.g. "Dubai", "Riyadh", "Marina", "Al Olaya"), accept it with enthusiasm and immediately proceed to Step 3.
 
 Step 3. Bedrooms:
 "How many bedrooms do you need?"
@@ -2748,44 +2607,39 @@ Step 3. Bedrooms:
 
 Step 4. Bathrooms:
 "And how many bathrooms?"
-[BUTTON: 1] [BUTTON: 1.5] [BUTTON: 2] [BUTTON: 2.5] [BUTTON: 3+]
+[BUTTON: 1] [BUTTON: 2] [BUTTON: 3] [BUTTON: 4+]
 
 Step 5. Parking:
-"Do you need parking?"
-[BUTTON: 🚗 Yes, 1 space] [BUTTON: 🚗 Yes, 2+ spaces] [BUTTON: ❌ No parking needed]
+"Do you need dedicated covered parking?"
+[BUTTON: 🚗 Yes, 1 space] [BUTTON: 🚗 Yes, 2+ spaces] [BUTTON: ❌ Not needed]
 
 Step 6. Must-have features:
-"Any specific must-have features? (e.g., Basement, Balcony, In-unit Laundry)"
-[BUTTON: 🏠 Basement] [BUTTON: 🧺 In-unit Laundry] [BUTTON: 🌅 Balcony] [BUTTON: 🐾 Pet-friendly] [BUTTON: None]
+"Any specific must-have features? (e.g., Balcony, Private Pool, Maids Room)"
+[BUTTON: 🌅 Balcony] [BUTTON: 🏊 Pool] [BUTTON: 👩‍🍳 Maids Room] [BUTTON: 🏋️ Gym] [BUTTON: None]
 
 Step 7. Occupants:
-"How many people would be living in the home?"
-[BUTTON: 1 Person] [BUTTON: 2 People] [BUTTON: 3 People] [BUTTON: 4 People] [BUTTON: 5+ People]
+"How many people would be living in the property?"
+[BUTTON: 1 Person] [BUTTON: 2 People] [BUTTON: Family (3-4)] [BUTTON: Large Family (5+)]
 
 Step 8. Pets:
 "Will you be bringing any pets?"
 [BUTTON: ✅ Yes] [BUTTON: ❌ No]
-(If user says Yes, ask: "What type of pet and how many?" [BUTTON: 🐕 1 Dog] [BUTTON: 🐕 2+ Dogs] [BUTTON: 🐈 1 Cat] [BUTTON: 🐈 2+ Cats] [BUTTON: Other])
 
-Step 9. Smoking / Vaping:
-"And do you or anyone in the household smoke or vape?"
-[BUTTON: ✅ Yes] [BUTTON: ❌ No]
+Step 9. Furnishing preference:
+"Do you prefer a furnished, semi-furnished, or unfurnished property?"
+[BUTTON: 🛋️ Fully Furnished] [BUTTON: 🪑 Semi-Furnished] [BUTTON: 📦 Unfurnished]
 
-Step 10. Proof of Income:
-"Do you currently have employment or another source of income that you can provide proof of, if required by the landlord?"
-[BUTTON: ✅ Yes] [BUTTON: ❌ No]
-
-Step 11. Credit Check:
-"Are you comfortable providing a credit report or authorizing a credit check if the landlord requires one?"
-[BUTTON: ✅ Yes] [BUTTON: ❌ No]
+Step 10. Proof of Employment / Income:
+"Do you currently have residency/employment or business documentation for lease agreement requirements?"
+[BUTTON: ✅ Yes] [BUTTON: ❌ In Process]
 
 Step 12. Budget:
-"What is your monthly budget for rent?"
-[BUTTON: Under $1,500/mo] [BUTTON: $1,500–$2,000/mo] [BUTTON: $2,000–$2,500/mo] [BUTTON: $2,500–$3,000/mo] [BUTTON: $3,000+/mo]
+"What is your annual budget for rent?"
+[BUTTON: Under AED/SAR 50,000/yr] [BUTTON: 50k–80k/yr] [BUTTON: 80k–120k/yr] [BUTTON: 120k–200k/yr] [BUTTON: 200k+/yr]
 
 Step 13. Move-in Timeline:
 "When are you looking to move in?"
-[BUTTON: ASAP] [BUTTON: Within 1 month] [BUTTON: Within 2–3 months] [BUTTON: Flexible]
+[BUTTON: Immediately] [BUTTON: Within 1 month] [BUTTON: In 2–3 months] [BUTTON: Flexible]
 
 Step 14. Working with another agent:
 "Are you currently working with another real estate agent?"
@@ -2795,17 +2649,14 @@ Step 15. Summarize and Confirm:
 Once all information is collected, you MUST generate a summary and ask for confirmation using EXACTLY this format:
 
 Here's what I have for your rental search:
-📍 Location: [City, State]
+📍 Location: [City, Emirate/Region, Country]
 🏠 Property type: [Property Type]
 🛏️ Bedrooms: [Bedrooms] | 🛁 Bathrooms: [Bathrooms]
 👥 Occupants: [Number]
-🐾 Pets: [Yes/No + Details]
-🚭 Smoke / Vape: [Yes/No]
-💼 Proof of Income: [Yes/No]
-📊 Credit Check: [Yes/No]
+🛋️ Furnishing: [Furnished / Unfurnished]
 🚗 Parking: [Parking]
 ✨ Features: [Features]
-💰 Budget: [Budget]
+💰 Annual Budget: [Budget in AED / SAR]
 📅 Move-in: [Timeline]
 Currently working with an agent: No
 
