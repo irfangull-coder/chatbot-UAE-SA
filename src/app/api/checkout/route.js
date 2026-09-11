@@ -1,15 +1,15 @@
 import Stripe from 'stripe';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: '2023-10-16', // Use the latest API version or your preferred one
-});
-
 const PLAN_PRICES = {
-  starter: { monthly: 49, yearly: 42 }, // $49/mo, $42/mo billed yearly ($504/year)
-  pro: { monthly: 79, yearly: 69 }      // $79/mo, $69/mo billed yearly ($828/year)
+  starter: { monthly: 49, yearly: 42 },
+  pro: { monthly: 79, yearly: 69 }
 };
 
+
 export async function POST(req) {
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+    apiVersion: '2023-10-16',
+  });
   try {
     const { plan, cycle, userId, userEmail } = await req.json();
 
