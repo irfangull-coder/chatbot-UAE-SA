@@ -29,7 +29,9 @@ export async function GET(req) {
   }
 
   if (!baseUrl) {
-    baseUrl = 'https://www.realtypropflow.com';
+    baseUrl = (typeof window !== 'undefined' && window.location && window.location.origin)
+      ? window.location.origin
+      : 'https://chatbot-uae-sa.vercel.app';
   }
 
   // Create iframe

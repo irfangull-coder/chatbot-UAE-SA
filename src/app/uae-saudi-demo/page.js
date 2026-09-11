@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import Script from 'next/script';
 import styles from './demo.module.css';
 
 const FEATURED_PROPERTIES = [
@@ -108,8 +109,38 @@ export default function UAESaudiDemoPage() {
   const [selectedCity, setSelectedCity] = useState('all');
   const [selectedType, setSelectedType] = useState('all');
 
+  useEffect(() => {
+    // Configure AI Chatbot by Gulf Real Estate
+    window.CHATBOT_CONFIG = {
+      botId: "92e7fbed-ab71-4a6c-9067-f78119dcbad3",
+      welcomeMessage: "Hi there! 👋 I'm UAE & SA's AI Real Estate Advisor. Looking to buy, rent, or invest in UAE or Saudi Arabia? How can I assist you today?"
+    };
+
+    // Load chatbot embed script if not already present
+    const existingScript = document.getElementById('gulf-chatbot-embed-loader');
+    if (!existingScript) {
+      const script = document.createElement('script');
+      script.id = 'gulf-chatbot-embed-loader';
+      script.src = 'https://chatbot-uae-sa.vercel.app/chatbot-embed.js';
+      script.defer = true;
+      document.body.appendChild(script);
+    }
+  }, []);
+
   const openChatWithPrompt = (promptText) => {
-    // Look for global chatbot button and click it to open
+    // If iframe exists, open it via postMessage
+    const iframe = document.getElementById('RealtyPropFlow-chatbot-iframe');
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.postMessage({ type: 'CHATBOT_TOGGLE', isOpen: true }, '*');
+      if (promptText) {
+        setTimeout(() => {
+          iframe.contentWindow.postMessage({ type: 'CHATBOT_SEND_MESSAGE', text: promptText }, '*');
+        }, 300);
+      }
+      return;
+    }
+
+    // Fallback launcher click
     const launcher = document.querySelector('button[aria-label*="chat"], .chat-launcher, [class*="launcher"]');
     if (launcher) {
       launcher.click();
@@ -382,6 +413,21 @@ export default function UAESaudiDemoPage() {
           © {new Date().getFullYear()} Al-Qasr Luxury Realty LLC. All Rights Reserved. UAE & Kingdom of Saudi Arabia.
         </div>
       </footer>
+
+      {/* ── AI Chatbot by Gulf Real Estate ── */}
+      <Script id="gulf-chatbot-config" strategy="afterInteractive">
+        {`
+          window.CHATBOT_CONFIG = {
+            botId: "92e7fbed-ab71-4a6c-9067-f78119dcbad3",
+            welcomeMessage: "Hi there! 👋 I'm UAE & SA's AI Real Estate Advisor. Looking to buy, rent, or invest in UAE or Saudi Arabia? How can I assist you today?"
+          };
+        `}
+      </Script>
+      <Script
+        id="gulf-chatbot-script-tag"
+        src="https://chatbot-uae-sa.vercel.app/chatbot-embed.js"
+        strategy="afterInteractive"
+      />
     </div>
   );
 }
