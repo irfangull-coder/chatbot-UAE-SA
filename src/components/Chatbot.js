@@ -2290,13 +2290,10 @@ export default function Chatbot({ isGlobal = false, isDesktopEmbed = false, init
       const isYes = msg.toLowerCase().includes('confirm') || msg.toLowerCase().includes('yes') || msg.includes('✅');
       if (isYes) {
         setBuyHomeStep(null);
-        setLeadStep('name');
-        setMessages(prev => [...prev, {
-          role: 'model',
-          parts: [{ text: `🎉 Outstanding! I'm preparing to pull the top 20 live property listings in **${buyHomeData.city}** tailored to your budget.\n\nMay I have your **full name** so our advisor can prepare your personalized portfolio?` }],
-          inputCard: { icon: '👤', label: 'Full Name', placeholder: 'e.g. Ahmed Al-Mansoor...' }
-        }]);
-        return;
+        const d = buyHomeData;
+        const searchPrompt = `User confirmed requirements. Intent: buy. Country: ${d.country || 'Saudi Arabia'}. Location: ${d.city || 'Jeddah'}. Property: ${d.type || 'Townhouse'}. Bedrooms: ${d.bedrooms || '3'}. Bathrooms: ${d.bathrooms || '2'}. Maximum budget: ${d.budget || 'Under 1M SAR'}. Features: ${d.features || ''}. School preference: ${d.schools || ''}. Buyer status: ${d.buyerStatus || ''}. Financing: ${d.financing || ''}. Timeline: ${d.timeline || ''}. Please search and show matching live properties for sale in ${d.city || 'Jeddah'}.`;
+        apiMessages.pop(); // remove "✅ Confirm & Find Properties"
+        apiMessages.push({ role: 'user', parts: [{ text: searchPrompt }] });
       } else {
         setBuyHomeStep('country');
         setMessages(prev => [...prev, {

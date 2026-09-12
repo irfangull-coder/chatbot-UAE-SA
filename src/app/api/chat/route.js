@@ -1313,13 +1313,18 @@ async function fetchCityPropertyData(botId, targetCity, intent = 'buy', propBudg
     }
 
     // ── PROPERTY TYPE GUARD ──
+    const GULF_CITIES = ['dubai', 'abu dhabi', 'sharjah', 'ajman', 'ras al khaimah', 'fujairah', 'umm al quwain', 'al ain', 'riyadh', 'jeddah', 'dammam', 'al khobar', 'makkah', 'madinah'];
+    const isGulfCity = GULF_CITIES.some(c => cleanCity.toLowerCase().includes(c));
+
     if (propType) {
       const typeMatches = filteredData.filter(item => propTypeMatches(item, propType));
       if (typeMatches.length > 0) {
         filteredData = typeMatches;
-      } else {
+      } else if (!isGulfCity) {
         console.log(`fetchCityPropertyData: 0 DB properties matched type="${propType}" for city="${cleanCity}" — falling back to live Apify scrape.`);
         return { text: '', rawProperties: [] };
+      } else {
+        console.log(`fetchCityPropertyData: 0 DB properties matched exact type="${propType}" for Gulf city="${cleanCity}" — relaxing to show available homes.`);
       }
     }
 
@@ -1340,23 +1345,29 @@ async function fetchCityPropertyData(botId, targetCity, intent = 'buy', propBudg
       });
 
       if (inBudgetMatch.length === 0) {
-        console.log(`fetchCityPropertyData: DB has 0 properties in user's budget range ($${minBudget.toLocaleString()}–$${maxBudgetMatch.toLocaleString()}) for city="${cleanCity}" — falling back to live Apify scrape to find $${minBudget.toLocaleString()}+ listings.`);
-        return { text: '', rawProperties: [] };
+        if (!isGulfCity) {
+          console.log(`fetchCityPropertyData: DB has 0 properties in user's budget range ($${minBudget.toLocaleString()}–$${maxBudgetMatch.toLocaleString()}) for city="${cleanCity}" — falling back to live Apify scrape to find $${minBudget.toLocaleString()}+ listings.`);
+          return { text: '', rawProperties: [] };
+        } else {
+          console.log(`fetchCityPropertyData: Gulf city "${cleanCity}" — budget relaxed to show closest available listings.`);
+        }
       }
 
       // Filter all properties at or above floor (minBudget), no upper ceiling for continuous pagination
       const inBudget = filteredData.filter(p => {
         const price = parseBudget(String(p.price || p.priceDisplay || ''));
         if (price <= 0) return true;   // price unknown — include it
-        return price >= minBudget;     // start at/above floor
+        return isGulfCity ? true : price >= minBudget;     // start at/above floor
       });
 
       // Sort ascending by price so lowest first, user sees cheapest matching options first starting from floor
-      filteredData = inBudget.sort((a, b) => {
-        const pa = parseBudget(String(a.price || a.priceDisplay || '')) || 0;
-        const pb = parseBudget(String(b.price || b.priceDisplay || '')) || 0;
-        return pa - pb;
-      });
+      if (inBudget.length > 0) {
+        filteredData = inBudget.sort((a, b) => {
+          const pa = parseBudget(String(a.price || a.priceDisplay || '')) || 0;
+          const pb = parseBudget(String(b.price || b.priceDisplay || '')) || 0;
+          return pa - pb;
+        });
+      }
     }
 
     // ── Extract already-shown property addresses to prevent duplicates ────────
