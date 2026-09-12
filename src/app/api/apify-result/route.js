@@ -303,7 +303,10 @@ const SUPPLEMENT_PHOTO_SETS = [
       .map((p, i) => {
         // All photos — collect from Bayut, Realtor.ca, Zillow, or Apify photo fields
         const allPhotos = (() => {
-          // ── Bayut format: coverPhoto + photos array ──
+          // ── Bayut format: photoUrls array or coverPhoto + photos array ──
+          if (Array.isArray(p.photoUrls) && p.photoUrls.length > 0) {
+            return p.photoUrls.filter(Boolean);
+          }
           const bayutPhotos = [];
           if (p.coverPhoto?.url) bayutPhotos.push(p.coverPhoto.url);
           if (Array.isArray(p.photos) && p.photos.length > 0) {
@@ -355,9 +358,21 @@ const SUPPLEMENT_PHOTO_SETS = [
         const image = realPhotos[0] || '';
 
         // URL — Bayut, Realtor.ca, or Zillow
-        const isBayut = !!(p.purpose || p.category?.nameSingular || p.externalID || (p.location && !p.location.address && p.location.name));
+        const isBayut = !!(p.purpose || p.category?.nameSingular || p.externalID || p.photoUrls || p.market || (p.location && !p.location.address));
+        let bayutUrl = null;
+        if (isBayut) {
+          if (p.slug) {
+            const isSA = p.market === 'sa' || p.currency === 'SAR';
+            bayutUrl = isSA
+              ? `https://www.bayut.sa/en/property/${p.slug}.html`
+              : `https://www.bayut.com/property/${p.slug}.html`;
+          } else if (p.url) {
+            bayutUrl = p.url.startsWith('http') ? p.url : `https://www.bayut.com${p.url}`;
+          }
+        }
+
         const url =
-          (isBayut && p.url ? (p.url.startsWith('http') ? p.url : `https://www.bayut.com${p.url}`) : null) ||
+          bayutUrl ||
           (p.attributes?.realtor_ca?.source_details?.relative_url_en ? `https://www.realtor.ca${p.attributes.realtor_ca.source_details.relative_url_en}` : null) ||
           (p.RelativeDetailsURL ? `https://www.realtor.ca${p.RelativeDetailsURL}` : null) ||
           p.propertyUrl ||
@@ -368,10 +383,13 @@ const SUPPLEMENT_PHOTO_SETS = [
 
         // Address — Bayut, Realtor.ca, or Zillow
         let address = 'Address not available';
-        // Bayut: title field contains the address/area, or build from location
+        // Bayut: use location hierarchy or title
         if (isBayut) {
-          const bayutLoc = p.location?.name || (Array.isArray(p.location) ? p.location.map(l => l.name).join(', ') : '');
-          address = p.title || bayutLoc || p.displayAddress || 'Address not available';
+          let locPart = '';
+          if (Array.isArray(p.location) && p.location.length > 0) {
+            locPart = p.location.filter(l => l.level > 0).map(l => l.name).reverse().join(', ');
+          }
+          address = locPart || p.title || p.displayAddress || 'Address not available';
         } else if (p.location?.address && typeof p.location.address === 'string') {
           address = p.location.address;
         } else if (p.Property?.Address?.AddressText) {
@@ -396,7 +414,7 @@ const SUPPLEMENT_PHOTO_SETS = [
         let price;
         if (isBayut) {
           const bayutPrice = p.price || p.rentPrice;
-          const currency = p.currency || 'AED';
+          const currency = p.currency || (p.market === 'sa' ? 'SAR' : 'AED');
           if (bayutPrice && Number(bayutPrice) > 0) {
             const formatted = Number(bayutPrice).toLocaleString('en-US');
             const suffix = (intent === 'rent' || (p.purpose || '').toLowerCase().includes('rent')) ? '/yr' : '';
@@ -418,13 +436,15 @@ const SUPPLEMENT_PHOTO_SETS = [
 
         // Beds, baths, type, city (support Bayut + Realtor.ca + Zillow)
         const beds = parseInt(
-          p.rooms?.bedrooms ?? p.bedrooms ?? p.property?.building?.bedrooms ?? p.Building?.Bedrooms ?? p.beds ?? p.units?.[0]?.beds ?? p.hdpData?.homeInfo?.bedrooms ?? p.resoFacts?.bedrooms ?? 0,
+          p.rooms ?? p.bedrooms ?? p.property?.building?.bedrooms ?? p.Building?.Bedrooms ?? p.beds ?? p.units?.[0]?.beds ?? p.hdpData?.homeInfo?.bedrooms ?? p.resoFacts?.bedrooms ?? 0,
           10
         ) || 0;
         const baths = parseFloat(
-          p.rooms?.bathrooms ?? p.bathrooms ?? p.property?.building?.bathroom_total ?? p.Building?.BathroomTotal ?? p.baths ?? 0
+          p.baths ?? p.rooms?.bathrooms ?? p.bathrooms ?? p.property?.building?.bathroom_total ?? p.Building?.BathroomTotal ?? 0
         ) || 0;
-        const bayutCategory = p.category?.nameSingular || p.category?.nameEnglish || '';
+        const bayutCategory = (Array.isArray(p.category) && p.category.length > 1)
+          ? (p.category[1]?.nameSingular || p.category[1]?.name || p.category[0]?.nameSingular)
+          : (p.category?.nameSingular || p.category?.nameEnglish || '');
         const itemRawType = bayutCategory || p.property?.building?.type || p.property?.property_type || p.Property?.Type || p.Building?.Type || p.homeType || p.propertyType || p.property_type || p.hdpData?.homeInfo?.homeType || p.resoFacts?.homeType || (rawType || 'Residential');
 
         // ── Normalize raw type to a clean display label ──────────────────────
@@ -435,6 +455,7 @@ const SUPPLEMENT_PHOTO_SETS = [
           if (v.includes('semi') || v.includes('link')) return 'Semi-Detached';
           if (v.includes('town') || v.includes('row')) return 'Townhouse';
           if (v.includes('condo') || v.includes('apartment') || v.includes('flat') || v.includes('strata')) return 'Condo';
+          if (v.includes('villa') || v.includes('luxury')) return 'Villa';
           if (v.includes('single') || v.includes('detach') || v.includes('house') || v.includes('residential')) return 'Detached';
           if (v.includes('land') || v.includes('lot') || v.includes('vacant')) return 'Land';
           if (v.includes('mobile') || v.includes('manufactured')) return 'Mobile Home';
@@ -442,10 +463,10 @@ const SUPPLEMENT_PHOTO_SETS = [
         };
 
         const type = normalizeTypeLabel(itemRawType);
-        // City — Bayut: last item in location array is the city/district
+        // City — Bayut: level 1 in location array is usually the city
         const bayutCity = (() => {
-          if (Array.isArray(p.location) && p.location.length > 0) {
-            return p.location[0]?.name || p.location[p.location.length - 1]?.name || '';
+          if (Array.isArray(p.location) && p.location.length > 1) {
+            return p.location[1]?.name || p.location[0]?.name || '';
           }
           return p.location?.name || '';
         })();
@@ -494,7 +515,10 @@ const SUPPLEMENT_PHOTO_SETS = [
           foundation: foundation,
           roof: roof,
           annual_tax: annualTax,
-          mls_number: mlsNumber
+          mls_number: mlsNumber,
+          portal_name: isBayut ? 'Bayut' : (p.portal_name || 'Realtor'),
+          agent_name: p.contactName || p.ownerAgent?.name || p.agent_name || null,
+          agent_phone: p.phoneNumber?.proxyMobile || p.phoneNumber?.whatsapp || p.agent_phone || null
         };
       })
       // Filter out completely empty results
