@@ -121,7 +121,7 @@ export async function GET(req) {
         if (req.includes('town')) return pType === 'townhouse' || rawPropType.includes('town');
         if (req.includes('condo') || req.includes('apartment') || req.includes('flat') || req.includes('strata')) return pType === 'condo' || rawPropType.includes('condo') || rawPropType.includes('apartment');
         if (req.includes('land') || req.includes('lot') || req.includes('vacant')) return pType === 'land' || rawPropType.includes('land') || rawPropType.includes('lot') || rawPropType.includes('vacant');
-        if (req.includes('manufactured') || req.includes('mobile')) return pType === 'manufactured' || rawPropType.includes('manufactured') || rawPropType.includes('mobile');
+        if (req.includes('villa') || req.includes('luxury')) return pType === 'detached' || rawPropType.includes('villa') || fullSearchText.includes('villa');
         if ((req.includes('detach') && !req.includes('semi')) || req.includes('single') || req.includes('house')) return pType === 'detached' || rawPropType.includes('single') || rawPropType.includes('detach');
         if (req.includes('semi') || req.includes('link')) return pType === 'semi-detached' || pType === 'townhouse';
         return pType.includes(req) || pTypeFromDesc.includes(req);
@@ -605,32 +605,28 @@ const SUPPLEMENT_PHOTO_SETS = [
 
       function isPropertyRental(p) {
         if (!p) return false;
-        // 1. Zillow explicit rental status
+        if (p.listing_type === 'rent') return true;
+        if (p.listing_type === 'buy' || p.listing_type === 'sale') return false;
         if (p.listingStatus === 'forRent' || p.cardType === 'apartmentBuilding' || (Array.isArray(p.units) && p.units.length > 0)) return true;
         if (p.isForRent === true || p.is_for_rent === true) return true;
         if (p.isForSale === true || p.is_for_sale === true) return false;
 
-        // 2. Price threshold: Monthly rentals in USA/Canada are $500 - $35,000. Homes for sale are $50k - $20M+.
-        const numPrice = getPrice(p);
-        if (numPrice > 0 && numPrice < 35000) return true; // Definitely a monthly rental!
-        if (numPrice >= 35000) return false; // Definitely a for-sale property!
-
-        // 2. Status Type & Home Status from Zillow HDP data
         const statusType = String(p.statusType || p.hdpData?.homeInfo?.homeStatus || p.homeStatus || '').toUpperCase();
         if (statusType.includes('RENT')) return true;
         if (statusType.includes('SALE') || statusType.includes('FOR_SALE') || statusType.includes('PENDING') || statusType.includes('ACTIVE')) return false;
 
-        // 3. Status Text / Badge
         const statusText = String(p.statusText || p.listing_status || p.status || '').toLowerCase();
-        if (statusText.includes('rent') || statusText.includes('/mo') || statusText.includes('per month') || statusText.includes('lease')) return true;
+        if (statusText.includes('rent') || statusText.includes('/mo') || statusText.includes('per month') || statusText.includes('lease') || statusText.includes('/yr') || statusText.includes('yearly')) return true;
         if (statusText.includes('sale') || statusText.includes('for sale') || statusText.includes('sold')) return false;
 
-        // 4. Price string formatting
         const priceStr = String(p.price || p.priceDisplay || p.listingPrice?.formatted || '').toLowerCase();
-        if (priceStr.includes('/mo') || priceStr.includes('per month') || priceStr.includes('/month') || priceStr.includes('rent:')) return true;
+        if (priceStr.includes('/mo') || priceStr.includes('per month') || priceStr.includes('/month') || priceStr.includes('rent:') || priceStr.includes('/yr') || priceStr.includes('yearly')) return true;
 
-        // 5. Rent price field presence
         if (p.rentPrice && !p.price && !p.listingPrice?.value) return true;
+
+        const numPrice = getPrice(p);
+        if (numPrice > 0 && numPrice < 35000) return true;
+        if (numPrice >= 35000) return false;
 
         return false;
       }

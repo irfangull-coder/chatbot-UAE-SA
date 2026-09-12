@@ -533,9 +533,9 @@ function propTypeMatches(p, requestedType) {
     if (req.includes('manufactured') || req.includes('mobile')) {
       return pType === 'manufactured' || rawPropType.includes('manufactured') || rawPropType.includes('mobile');
     }
-    // 6. Villa / Luxury → same as Detached
+    // 6. Villa / Luxury → matches detached, villa, and luxury
     if (req.includes('villa') || req.includes('luxury')) {
-      return pType === 'detached';
+      return pType === 'detached' || rawPropType.includes('villa') || fullSearchText.includes('villa');
     }
     // 7. Detached / Single Family / House (strictly detached, NOT semi or multi)
     if ((req.includes('detach') && !req.includes('semi')) || req.includes('single') || req.includes('house')) {
@@ -1123,20 +1123,22 @@ function selectRecommendedProperties(properties, targetBudget = 0, targetBeds = 
 
   function isPropertyRental(p) {
     if (!p) return false;
-    const numPrice = getPrice(p);
-    if (numPrice > 0 && numPrice < 35000) return true;
-    if (numPrice >= 35000) return false;
+    if (p.listing_type === 'rent') return true;
+    if (p.listing_type === 'buy' || p.listing_type === 'sale') return false;
     if (p.isForRent === true || p.is_for_rent === true) return true;
     if (p.isForSale === true || p.is_for_sale === true) return false;
     const statusType = String(p.statusType || p.hdpData?.homeInfo?.homeStatus || p.homeStatus || '').toUpperCase();
     if (statusType.includes('RENT')) return true;
     if (statusType.includes('SALE') || statusType.includes('FOR_SALE') || statusType.includes('PENDING') || statusType.includes('ACTIVE')) return false;
     const statusText = String(p.statusText || p.listing_status || p.status || '').toLowerCase();
-    if (statusText.includes('rent') || statusText.includes('/mo') || statusText.includes('per month') || statusText.includes('lease')) return true;
+    if (statusText.includes('rent') || statusText.includes('/mo') || statusText.includes('per month') || statusText.includes('lease') || statusText.includes('/yr') || statusText.includes('yearly')) return true;
     if (statusText.includes('sale') || statusText.includes('for sale') || statusText.includes('sold')) return false;
     const priceStr = String(p.price || p.priceDisplay || p.listingPrice?.formatted || '').toLowerCase();
-    if (priceStr.includes('/mo') || priceStr.includes('per month') || priceStr.includes('/month') || priceStr.includes('rent:')) return true;
+    if (priceStr.includes('/mo') || priceStr.includes('per month') || priceStr.includes('/month') || priceStr.includes('rent:') || priceStr.includes('/yr') || priceStr.includes('yearly')) return true;
     if (p.rentPrice && !p.price && !p.listingPrice?.value) return true;
+    const numPrice = getPrice(p);
+    if (numPrice > 0 && numPrice < 35000) return true;
+    if (numPrice >= 35000) return false;
     return false;
   }
 
