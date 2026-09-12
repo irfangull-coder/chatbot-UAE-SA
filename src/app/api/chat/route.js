@@ -716,6 +716,12 @@ async function startApifyRun(city, state, intent, fullChatText = '', propBudget 
     }
 
     const normCity = normalizeCityName(city);
+    const GULF_CITIES = ['dubai', 'abu dhabi', 'sharjah', 'ajman', 'ras al khaimah', 'fujairah', 'umm al quwain', 'al ain', 'riyadh', 'jeddah', 'dammam', 'al khobar', 'makkah', 'madinah'];
+    if (GULF_CITIES.some(c => (normCity || '').toLowerCase().includes(c))) {
+      console.log(`[Apify] Skipping Zillow scraper for Gulf city "${normCity}" — Zillow is US/Canada only.`);
+      return null;
+    }
+
     const budgetBucket = minPriceOverride > 0 ? `floor_${Math.round(minPriceOverride / 50000) * 50000}` : getBudgetBucket(propBudget);
     const typeSlug = propType ? propType.toLowerCase().replace(/\s+/g, '_') : 'any';
     const runKey = `${normCity.toLowerCase()}_${budgetBucket}_${intent}_${typeSlug}`;
@@ -733,15 +739,14 @@ async function startApifyRun(city, state, intent, fullChatText = '', propBudget 
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         let runRes = await fetch(
-          `https://api.apify.com/v2/acts/maxcopell~zillow-scraper/runs?maxItems=60&token=${APIFY_TOKEN}`,
+          `https://api.apify.com/v2/acts/maxcopell~zillow-scraper/runs?maxItems=10&timeout=60&token=${APIFY_TOKEN}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               startUrls: [{ url: searchUrl }],
               searchUrls: [{ url: searchUrl }],
-              maxItems: 60,
-              extractionMethod: 'PAGINATION_WITH_ZOOM_IN',
+              maxItems: 10,
               proxy: {
                 useApifyProxy: true
               }
@@ -1318,14 +1323,14 @@ async function fetchCityPropertyData(botId, targetCity, intent = 'buy', propBudg
       }
     }
 
-    // ── BUDGET FILTER & DB MATCH CHECK ──
-    // Example: User Budget = $566k -> Floor = $466k (budget - $100k)
-    // 1. Check if DB has properties near user's target budget [minBudget, budget + 10%]:
-    //    If DB properties only start far above user budget (e.g. DB starts at $645k),
-    //    DB does not have affordable options in user's range -> trigger fresh Apify scrape!
-    // 2. If DB HAS matching properties in range -> serve from DB starting from lowest price at/above floor ($466k).
+    // ── BUDGET FILTER & DB MATCH CHECK (Gulf: ±10% window) ──
+    // For Gulf markets (AED/SAR), use 10% below budget as floor (not flat $100k).
+    // 1. Check if DB has properties within user budget ±10% range.
+    // 2. If DB HAS matching properties → serve from DB starting from lowest price at/above 90% of budget.
+    // 3. If DB has NO matching properties → fall back to Gulf Apify scrape.
     if (propBudget > 0) {
-      const minBudget = Math.max(0, isRentIntent ? (propBudget - 150) : (propBudget - 100000)); // floor: $100k below budget
+      // Gulf: floor = budget * 0.90 (10% below budget), ceiling = budget * 1.10 (10% above)
+      const minBudget = Math.max(0, isRentIntent ? (propBudget - 150) : Math.round(propBudget * 0.90));
       const maxBudgetMatch = isRentIntent ? (propBudget + 250) : Math.round(propBudget * 1.10); // user budget + 10% tolerance
 
       // Check if DB has at least 1 property near the user's budget range
@@ -1398,9 +1403,21 @@ async function fetchCityPropertyData(botId, targetCity, intent = 'buy', propBudg
 
     const sourcePool = isShowMore ? unseenData : (unseenData.length > 0 ? [...unseenData, ...seenData] : filteredData);
     const candidateObj = selectRecommendedProperties(sourcePool, propBudget, propBeds, propBaths, isRentIntent, budgetNeeded, bedNeeded, propType);
-    // Always require at least 4 matching properties from DB (both initial search AND Show More).
-    // If fewer than 4 are available in DB, fall through to live Apify scrape to fetch a full batch of 4+ live properties!
-    if (candidateList.length < cardsLimit) {
+    let candidateList = candidateObj.results || [];
+
+    const isGulf = ['dubai', 'abu dhabi', 'sharjah', 'ajman', 'ras al khaimah', 'fujairah', 'umm al quwain', 'al ain', 'riyadh', 'jeddah', 'dammam', 'al khobar', 'makkah', 'madinah'].some(c => cleanCity.toLowerCase().includes(c));
+
+    if (isGulf && candidateList.length === 0 && sourcePool.length > 0) {
+      // Relax criteria for Gulf properties so visitor sees closest available homes
+      candidateList = sourcePool.slice(0, cardsLimit);
+    }
+
+    if (isGulf) {
+      if (candidateList.length === 0) {
+        console.log(`fetchCityPropertyData: No properties in DB for Gulf city="${cleanCity}".`);
+        return { text: '', rawProperties: [] };
+      }
+    } else if (candidateList.length < cardsLimit) {
       console.log(`fetchCityPropertyData: Only ${candidateList.length} (< ${cardsLimit}) matching properties in DB for city="${cleanCity}" (isShowMore=${isShowMore}) — falling back to live Apify scrape to fetch full 4-card batch.`);
       return { text: '', rawProperties: [] };
     }
@@ -1443,38 +1460,26 @@ async function fetchCityPropertyData(botId, targetCity, intent = 'buy', propBudg
 
       const mainImg = imgArr[0] || '';
       const allImgs = imgArr.slice(0, 8).join('|');
-      const url = l.url || l.propertyUrl || l.detailUrl || (l.zpid ? `https://www.zillow.com/homedetails/${l.zpid}_zpid/` : '#');
-      const status = l.listing_status || (l.rentPrice || String(price).includes('/mo') ? '🔵 For Rent' : '🟢 For Sale');
+      const url = l.source_url || l.url || l.propertyUrl || l.detailUrl || '#';
+      const gulfCity = l.city || cleanCity || '';
+      const isUAECity = ['dubai', 'abu dhabi', 'sharjah', 'ajman', 'ras al khaimah', 'fujairah', 'umm al quwain', 'al ain'].some(c => gulfCity.toLowerCase().includes(c));
+      const curr = l.currency || (isUAECity ? 'AED' : 'SAR');
+      let displayPrice = l.price_display || l.priceDisplay || '';
+      if (!displayPrice && l.price) {
+        displayPrice = typeof l.price === 'number' ? `${curr} ${l.price.toLocaleString()}${isRentIntent ? '/yr' : ''}` : String(l.price);
+      } else if (!displayPrice) {
+        displayPrice = 'Contact for Price';
+      }
+      const status = l.listing_type === 'rent' || l.listing_status?.includes('Rent') || isRentIntent ? '🔵 For Rent' : '🟢 For Sale';
 
-      cards.push(`[PROPERTY_CARD]
-Status: ${status}
-Type: ${type}
-Address: ${addr}
-Price: ${price}
-Beds: ${beds} | Baths: ${baths}
-Image: ${mainImg}
-Images: ${allImgs}
-Link: ${url}
-[/PROPERTY_CARD]`);
+      cards.push(`[PROPERTY_CARD]\nStatus: ${status}\nType: ${type}\nAddress: ${addr}\nPrice: ${displayPrice}\nBeds: ${beds} | Baths: ${baths}\nImage: ${mainImg}\nImages: ${allImgs}\nLink: ${url}\n[/PROPERTY_CARD]`);
     });
 
     section += cards.join('\n\n');
-    section += `\n\nCRITICAL INSTRUCTIONS:
-1. Show EXACTLY ${cardsLimit} properties in your immediate response.
-2. All properties are pre-filtered to be within ±10% of the user's stated budget. Show them as-is.
-3. Output properties EXACTLY using the raw [PROPERTY_CARD] and [/PROPERTY_CARD] tags.
-4. After showing the properties, add these buttons:
-[BUTTON: Show more properties]
-[BUTTON: I like one of these properties!]
-
-⛔ STRICT NON-DUPLICATION RULE:
-- NEVER repeat a property that was already shown earlier in this chat.
-- Show ONLY new properties from the list above.`;
+    section += `\n\nCRITICAL INSTRUCTIONS:\n1. Show EXACTLY ${cardsLimit} properties in your immediate response.\n2. All properties are pre-filtered to be within ±10% of the user's stated budget. Show them as-is.\n3. Output properties EXACTLY using the raw [PROPERTY_CARD] and [/PROPERTY_CARD] tags.\n4. After showing the properties, add these buttons:\n[BUTTON: Show more properties]\n[BUTTON: I like one of these properties!]\n\n⛔ STRICT NON-DUPLICATION RULE:\n- NEVER repeat a property that was already shown earlier in this chat.\n- Show ONLY new properties from the list above.`;
 
     // Return both the text section for system prompt AND the raw property objects for direct JSON response
     return { text: section, rawProperties: candidateList.slice(0, 16) };
-
-    return section;
   } catch (err) {
     console.error('City property fetch error:', err);
     return { text: '', rawProperties: [] };
@@ -2344,9 +2349,16 @@ CRITICAL INSTRUCTIONS:
                   }
                 });
                 const minPriceToScrape = (isShowMoreRequest && maxShownPrice > 0) ? (maxShownPrice + 1) : 0;
-                console.log(`[Route] 0 DB properties available/unseen (isShowMore=${isShowMoreRequest}) — starting live Apify search for City=${detectedCity} minPriceFloor=$${minPriceToScrape} Type=${propType}!`);
-                const resolvedState = resolveStateOrProvince(detectedCity, detectedState);
-                apifyRunId = await startApifyRun(detectedCity, resolvedState, propIntent, fullChatText, propBudget, propType, propBeds, propBaths, isShowMoreRequest, minPriceToScrape);
+                const GULF_CITIES = ['dubai', 'abu dhabi', 'sharjah', 'ajman', 'ras al khaimah', 'fujairah', 'umm al quwain', 'al ain', 'riyadh', 'jeddah', 'dammam', 'al khobar', 'makkah', 'madinah'];
+                const isGulf = GULF_CITIES.some(c => (detectedCity || '').toLowerCase().includes(c));
+
+                if (!isGulf) {
+                  console.log(`[Route] 0 DB properties available/unseen (isShowMore=${isShowMoreRequest}) — starting live Apify search for City=${detectedCity} minPriceFloor=$${minPriceToScrape} Type=${propType}!`);
+                  const resolvedState = resolveStateOrProvince(detectedCity, detectedState);
+                  apifyRunId = await startApifyRun(detectedCity, resolvedState, propIntent, fullChatText, propBudget, propType, propBeds, propBaths, isShowMoreRequest, minPriceToScrape);
+                } else {
+                  console.log(`[Route] Gulf city detected (${detectedCity}) — skipping Zillow Apify to preserve credit.`);
+                }
 
                 if (apifyRunId) {
                   const cityBtns = isShowMoreRequest ? '' : [
@@ -2389,9 +2401,16 @@ CRITICAL INSTRUCTIONS:
             // ============================================================
             // PRIORITY 3: Live Apify search (Zillow)
             // ============================================================
+              const GULF_CITIES = ['dubai', 'abu dhabi', 'sharjah', 'ajman', 'ras al khaimah', 'fujairah', 'umm al quwain', 'al ain', 'riyadh', 'jeddah', 'dammam', 'al khobar', 'makkah', 'madinah'];
+              const isGulf = GULF_CITIES.some(c => (detectedCity || '').toLowerCase().includes(c));
               const resolvedState = resolveStateOrProvince(detectedCity, detectedState);
-              console.log(`[Route] PRIORITY 3: No local data — starting live Apify run for City=${detectedCity} State=${resolvedState} Budget=${propBudget} Type=${propType}...`);
-              apifyRunId = await startApifyRun(detectedCity, resolvedState, propIntent, fullChatText, propBudget, propType, propBeds, propBaths);
+
+              if (!isGulf) {
+                console.log(`[Route] PRIORITY 3: No local data — starting live Apify run for City=${detectedCity} State=${resolvedState} Budget=${propBudget} Type=${propType}...`);
+                apifyRunId = await startApifyRun(detectedCity, resolvedState, propIntent, fullChatText, propBudget, propType, propBeds, propBaths);
+              } else {
+                console.log(`[Route] PRIORITY 3: Gulf city "${detectedCity}" — skipping Zillow Apify to save credit.`);
+              }
 
               if (apifyRunId) {
                 const isShowMoreRequest = /(show\s*more|more\s*prop|see\s*more|next\s*prop)/i.test(lastUserMsg);
