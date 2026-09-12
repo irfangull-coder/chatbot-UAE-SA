@@ -301,8 +301,19 @@ const SUPPLEMENT_PHOTO_SETS = [
 
     const properties = itemsToProcess
       .map((p, i) => {
-        // All photos — collect from Realtor.ca, Zillow, or Apify photo fields
+        // All photos — collect from Bayut, Realtor.ca, Zillow, or Apify photo fields
         const allPhotos = (() => {
+          // ── Bayut format: coverPhoto + photos array ──
+          const bayutPhotos = [];
+          if (p.coverPhoto?.url) bayutPhotos.push(p.coverPhoto.url);
+          if (Array.isArray(p.photos) && p.photos.length > 0) {
+            p.photos.forEach(ph => {
+              const u = typeof ph === 'string' ? ph : (ph.url || ph.main || ph.thumbnail);
+              if (u) bayutPhotos.push(u);
+            });
+          }
+          if (bayutPhotos.length > 0) return bayutPhotos;
+
           // Realtor.ca format (media.images with high_res_url or Property.Photo)
           if (Array.isArray(p.media?.images) && p.media.images.length > 0) {
             return p.media.images.map(img => (typeof img === 'string' ? img : (img.high_res_url || img.medium_res_url || img.low_res_url))).filter(Boolean);
@@ -316,9 +327,6 @@ const SUPPLEMENT_PHOTO_SETS = [
           }
           if (Array.isArray(p.carouselPhotos) && p.carouselPhotos.length > 0) {
             return p.carouselPhotos.map(ph => ph.url || ph).filter(Boolean);
-          }
-          if (Array.isArray(p.photos) && p.photos.length > 0) {
-            return p.photos.map(ph => (typeof ph === 'string' ? ph : (ph.url || ph.HighResPath))).filter(Boolean);
           }
           if (Array.isArray(p.images) && p.images.length > 0) {
             return p.images.map(ph => (typeof ph === 'string' ? ph : ph.url)).filter(Boolean);
@@ -346,20 +354,25 @@ const SUPPLEMENT_PHOTO_SETS = [
         // Primary thumbnail
         const image = realPhotos[0] || '';
 
-        // URL — build from Realtor.ca or Zillow fields
+        // URL — Bayut, Realtor.ca, or Zillow
+        const isBayut = !!(p.purpose || p.category?.nameSingular || p.externalID || (p.location && !p.location.address && p.location.name));
         const url =
+          (isBayut && p.url ? (p.url.startsWith('http') ? p.url : `https://www.bayut.com${p.url}`) : null) ||
           (p.attributes?.realtor_ca?.source_details?.relative_url_en ? `https://www.realtor.ca${p.attributes.realtor_ca.source_details.relative_url_en}` : null) ||
           (p.RelativeDetailsURL ? `https://www.realtor.ca${p.RelativeDetailsURL}` : null) ||
           p.propertyUrl ||
           p.detailUrl ||
-          p.url ||
           p.link ||
           p.hdpData?.homeInfo?.detailUrl ||
           (p.zpid ? `https://www.zillow.com/homedetails/${p.zpid}_zpid/` : 'https://www.realtor.ca');
 
-        // Address — try Realtor.ca and all known Zillow field combinations
+        // Address — Bayut, Realtor.ca, or Zillow
         let address = 'Address not available';
-        if (p.location?.address && typeof p.location.address === 'string') {
+        // Bayut: title field contains the address/area, or build from location
+        if (isBayut) {
+          const bayutLoc = p.location?.name || (Array.isArray(p.location) ? p.location.map(l => l.name).join(', ') : '');
+          address = p.title || bayutLoc || p.displayAddress || 'Address not available';
+        } else if (p.location?.address && typeof p.location.address === 'string') {
           address = p.location.address;
         } else if (p.Property?.Address?.AddressText) {
           address = p.Property.Address.AddressText.replace(/\|/g, ', ');
@@ -379,26 +392,40 @@ const SUPPLEMENT_PHOTO_SETS = [
           address = p.hdpData.homeInfo.streetAddress;
         }
 
-        // Price — resolve accurately and never return $0
-        let price = resolveAndFormatPrice(p, intent === 'rent');
-        if (!price || price === 'Contact for price') {
-          const rawNum = parseBudgetNum(p.pricing?.display_price || p.pricing?.amount || p.Property?.Price || p.price || p.unformattedPrice);
-          if (rawNum > 0) {
-            price = '$' + rawNum.toLocaleString('en-US') + (intent === 'rent' ? '/mo' : '');
+        // Price — resolve accurately for Bayut (price field may be AED number) and never return $0
+        let price;
+        if (isBayut) {
+          const bayutPrice = p.price || p.rentPrice;
+          const currency = p.currency || 'AED';
+          if (bayutPrice && Number(bayutPrice) > 0) {
+            const formatted = Number(bayutPrice).toLocaleString('en-US');
+            const suffix = (intent === 'rent' || (p.purpose || '').toLowerCase().includes('rent')) ? '/yr' : '';
+            price = `${currency} ${formatted}${suffix}`;
           } else {
             price = 'Contact for price';
           }
+        } else {
+          price = resolveAndFormatPrice(p, intent === 'rent');
+          if (!price || price === 'Contact for price') {
+            const rawNum = parseBudgetNum(p.pricing?.display_price || p.pricing?.amount || p.Property?.Price || p.price || p.unformattedPrice);
+            if (rawNum > 0) {
+              price = '$' + rawNum.toLocaleString('en-US') + (intent === 'rent' ? '/mo' : '');
+            } else {
+              price = 'Contact for price';
+            }
+          }
         }
 
-        // Beds, baths, type, city (support Realtor.ca + Zillow)
+        // Beds, baths, type, city (support Bayut + Realtor.ca + Zillow)
         const beds = parseInt(
-          p.property?.building?.bedrooms || p.Building?.Bedrooms || p.bedrooms || p.beds || p.units?.[0]?.beds || p.hdpData?.homeInfo?.bedrooms || p.resoFacts?.bedrooms || 0,
+          p.rooms?.bedrooms ?? p.bedrooms ?? p.property?.building?.bedrooms ?? p.Building?.Bedrooms ?? p.beds ?? p.units?.[0]?.beds ?? p.hdpData?.homeInfo?.bedrooms ?? p.resoFacts?.bedrooms ?? 0,
           10
-        ) || 3;
+        ) || 0;
         const baths = parseFloat(
-          p.property?.building?.bathroom_total || p.Building?.BathroomTotal || p.bathrooms || p.baths || 0
-        ) || 2;
-        const itemRawType = p.property?.building?.type || p.property?.property_type || p.Property?.Type || p.Building?.Type || p.homeType || p.propertyType || p.property_type || p.hdpData?.homeInfo?.homeType || p.resoFacts?.homeType || (rawType || 'Residential');
+          p.rooms?.bathrooms ?? p.bathrooms ?? p.property?.building?.bathroom_total ?? p.Building?.BathroomTotal ?? p.baths ?? 0
+        ) || 0;
+        const bayutCategory = p.category?.nameSingular || p.category?.nameEnglish || '';
+        const itemRawType = bayutCategory || p.property?.building?.type || p.property?.property_type || p.Property?.Type || p.Building?.Type || p.homeType || p.propertyType || p.property_type || p.hdpData?.homeInfo?.homeType || p.resoFacts?.homeType || (rawType || 'Residential');
 
         // ── Normalize raw type to a clean display label ──────────────────────
         const normalizeTypeLabel = (val) => {
@@ -415,14 +442,21 @@ const SUPPLEMENT_PHOTO_SETS = [
         };
 
         const type = normalizeTypeLabel(itemRawType);
-        const city = (typeof p.location?.address === 'string' && p.location.address.includes(',') ? p.location.address.split(',')[1]?.replace(/\(.*?\)/g, '').trim() : '') || p.Property?.Address?.AddressText?.split('|')[1]?.trim() || p.city || p.addressCity || p.hdpData?.homeInfo?.city || (typeof address === 'string' && address.includes(',') ? address.split(',')[1]?.replace(/\(.*?\)/g, '').trim() : '') || requestedCity || '';
+        // City — Bayut: last item in location array is the city/district
+        const bayutCity = (() => {
+          if (Array.isArray(p.location) && p.location.length > 0) {
+            return p.location[0]?.name || p.location[p.location.length - 1]?.name || '';
+          }
+          return p.location?.name || '';
+        })();
+        const city = bayutCity || (typeof p.location?.address === 'string' && p.location.address.includes(',') ? p.location.address.split(',')[1]?.replace(/\(.*?\)/g, '').trim() : '') || p.Property?.Address?.AddressText?.split('|')[1]?.trim() || p.city || p.addressCity || p.hdpData?.homeInfo?.city || (typeof address === 'string' && address.includes(',') ? address.split(',')[1]?.replace(/\(.*?\)/g, '').trim() : '') || requestedCity || '';
 
 
         // Rich Facts & Features
-        const livingArea = p.Building?.SizeInterior || p.livingArea || p.sqft || p.area || p.hdpData?.homeInfo?.livingArea || p.resoFacts?.livingArea || null;
+        const livingArea = p.area || p.Building?.SizeInterior || p.livingArea || p.sqft || p.hdpData?.homeInfo?.livingArea || p.resoFacts?.livingArea || null;
         const lotSize = p.Land?.SizeTotal || p.lotSize || p.lotAreaValue || (p.hdpData?.homeInfo?.lotAreaValue ? `${p.hdpData?.homeInfo?.lotAreaValue} ${p.hdpData?.homeInfo?.lotAreaUnits || 'sqft'}` : null);
         const yearBuilt = p.Building?.ConstructedDate || p.yearBuilt || p.hdpData?.homeInfo?.yearBuilt || p.resoFacts?.yearBuilt || null;
-        const description = p.PublicRemarks || p.description || p.resoFacts?.description || p.hdpData?.homeInfo?.description || null;
+        const description = p.description || p.PublicRemarks || p.resoFacts?.description || p.hdpData?.homeInfo?.description || null;
         const stories = p.Building?.StoriesTotal || p.stories || p.resoFacts?.stories || p.hdpData?.homeInfo?.stories || null;
         const parking = p.Property?.ParkingSpaceTotal || p.parking || p.garageSpaces || p.resoFacts?.garageSpaces || p.resoFacts?.parkingCapacity || null;
         const heating = (Array.isArray(p.resoFacts?.heating) ? p.resoFacts?.heating?.join(', ') : p.heating) || p.Building?.HeatingType || null;
@@ -433,7 +467,7 @@ const SUPPLEMENT_PHOTO_SETS = [
         const foundation = (Array.isArray(p.resoFacts?.foundationDetails) ? p.resoFacts?.foundationDetails?.join(', ') : p.foundation) || null;
         const roof = p.resoFacts?.roofType || p.roof || null;
         const annualTax = p.annualTax || (p.hdpData?.homeInfo?.taxAssessedValue ? '$' + Math.round(p.hdpData.homeInfo.taxAssessedValue * 0.012).toLocaleString() : null);
-        const mlsNumber = p.MlsNumber || p.mls_number || p.mlsNumber || p.zpid || p.hdpData?.homeInfo?.zpid || '';
+        const mlsNumber = p.MlsNumber || p.mls_number || p.mlsNumber || p.externalID || p.zpid || p.hdpData?.homeInfo?.zpid || '';
 
         return {
           image_url: image,
@@ -488,6 +522,12 @@ const SUPPLEMENT_PHOTO_SETS = [
           const c = String(p.city || '').toLowerCase();
           return (addr.includes(requestedCity) || c.includes(requestedCity)) && !addr.includes('ha' + requestedCity);
         });
+      }
+
+      // If strict filter removed everything but scraper returned valid listings for the targeted URL, keep them
+      if (finalProperties.length === 0 && properties.length > 0) {
+        console.log(`[apify-result] City filter returned 0, retaining all ${properties.length} properties from targeted scraper run.`);
+        finalProperties = properties;
       }
     } else if (properties.length > 0) {
       const firstValid = properties.find(p => p.city);

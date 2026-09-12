@@ -124,6 +124,61 @@ function resolveStateOrProvince(city, detectedState) {
   return CITY_STATE_MAP[key] || '';
 }
 
+// ── Check if location belongs to UAE or Saudi Arabia (Gulf) ───────────────────
+function isGulfLocation(city, state = '', country = '', fullChatText = '') {
+  const cityL = (city || '').toLowerCase().trim();
+  const stateL = (state || '').toLowerCase().trim();
+  const countryL = (country || '').toLowerCase().trim();
+  const fullTextL = (fullChatText || '').toLowerCase();
+
+  // 1. Explicit country or acronym
+  if (countryL.includes('uae') || countryL.includes('emirates') || countryL.includes('saudi') || countryL.includes('ksa')) return true;
+  if (fullTextL.includes('united arab emirates') || fullTextL.includes('saudi arabia') || fullTextL.includes('in uae') || fullTextL.includes('in ksa') || fullTextL.includes('in saudi')) return true;
+
+  // 2. Direct map in CITY_STATE_MAP (all keys are UAE & Saudi)
+  if (CITY_STATE_MAP[cityL] || CITY_STATE_MAP[stateL]) return true;
+
+  // 3. All recognized UAE & Saudi cities, emirates, and governorates
+  const GULF_CITIES_ALL = [
+    // UAE Emirates & Cities
+    'dubai', 'abu dhabi', 'sharjah', 'ajman', 'ras al khaimah', 'rak', 'fujairah', 'umm al quwain', 'uaq', 'al ain',
+    'khor fakkan', 'dibba', 'kalba', 'hatta', 'ruwais', 'madinat zayed', 'liwa', 'ghayathi', 'jebel ali',
+    'palm jumeirah', 'dubai marina', 'marina', 'downtown dubai', 'downtown', 'business bay', 'jvc', 'jvt', 'difc',
+    'meydan', 'motor city', 'sports city', 'arabian ranches', 'damac hills', 'dubai hills', 'deira', 'bur dubai',
+    'al barsha', 'mirdif', 'jlt', 'al furjan', 'creek harbour', 'silicon oasis', 'yas island', 'saadiyat', 'al reem',
+    // Saudi Arabia Cities & Provinces
+    'riyadh', 'jeddah', 'dammam', 'al khobar', 'khobar', 'dhahran', 'jubail', 'makkah', 'mecca', 'madinah', 'medina',
+    'taif', 'yanbu', 'tabuk', 'abha', 'khamis mushait', 'najran', 'jizan', 'jazan', 'buraidah', 'unaizah', 'qassim',
+    'hail', 'al ahsa', 'hofuf', 'qatif', 'al kharj', 'sakaka', 'arar', 'al bahah', 'diriyah', 'malqa', 'olaya',
+    'hittin', 'nakheel', 'yasmin', 'narjis', 'aqiq', 'shati', 'obhur', 'asir', 'eastern province'
+  ];
+
+  return GULF_CITIES_ALL.some(g => cityL.includes(g) || stateL.includes(g));
+}
+
+// ── Determine whether Gulf location is UAE or Saudi Arabia ───────────────────
+function getGulfCountry(city, state = '', country = '', fullChatText = '') {
+  const cityL = (city || '').toLowerCase().trim();
+  const stateL = (state || '').toLowerCase().trim();
+  const countryL = (country || '').toLowerCase().trim();
+  const textL = (fullChatText || '').toLowerCase();
+
+  if (countryL.includes('uae') || countryL.includes('emirates') || textL.includes('uae') || textL.includes('united arab emirates')) return 'UAE';
+  if (countryL.includes('saudi') || countryL.includes('ksa') || textL.includes('saudi') || textL.includes('ksa')) return 'Saudi Arabia';
+
+  const UAE_SPECIFIC = [
+    'dubai', 'abu dhabi', 'sharjah', 'ajman', 'ras al khaimah', 'rak', 'fujairah', 'umm al quwain', 'uaq', 'al ain',
+    'khor fakkan', 'dibba', 'kalba', 'hatta', 'ruwais', 'jebel ali', 'marina', 'palm jumeirah', 'downtown',
+    'business bay', 'jvc', 'jvt', 'difc', 'meydan', 'motor city', 'sports city', 'arabian ranches', 'damac hills',
+    'dubai hills', 'deira', 'bur dubai', 'al barsha', 'mirdif', 'jlt', 'al furjan', 'creek harbour', 'silicon oasis',
+    'yas island', 'saadiyat', 'al reem', 'al raha', 'masdar city', 'khalifa city'
+  ];
+
+  if (UAE_SPECIFIC.some(u => cityL.includes(u) || stateL.includes(u))) return 'UAE';
+
+  return 'Saudi Arabia';
+}
+
 // ── AI-Powered City Resolver & Autocorrect using OpenAI ──
 const AI_CITY_CACHE = new Map();
 
@@ -716,9 +771,8 @@ async function startApifyRun(city, state, intent, fullChatText = '', propBudget 
     }
 
     const normCity = normalizeCityName(city);
-    const GULF_CITIES = ['dubai', 'abu dhabi', 'sharjah', 'ajman', 'ras al khaimah', 'fujairah', 'umm al quwain', 'al ain', 'riyadh', 'jeddah', 'dammam', 'al khobar', 'makkah', 'madinah'];
-    if (GULF_CITIES.some(c => (normCity || '').toLowerCase().includes(c))) {
-      console.log(`[Apify] Skipping Zillow scraper for Gulf city "${normCity}" — Zillow is US/Canada only.`);
+    if (isGulfLocation(normCity, state, '', fullChatText)) {
+      console.log(`[Apify] Skipping Zillow scraper for Gulf location "${normCity}" — Zillow is US/Canada only.`);
       return null;
     }
 
@@ -773,6 +827,133 @@ async function startApifyRun(city, state, intent, fullChatText = '', propBudget 
     return runId;
   } catch (e) {
     console.error('[Apify] Start error Exception thrown:', e.message, e.stack);
+    return null;
+  }
+}
+
+// ─── Build Bayut.com / Bayut.sa Search URL for Gulf Properties ───────────────
+function buildBayutSearchUrl(city, intent, propType = null, propBeds = 0, state = '', country = '', fullChatText = '') {
+  const cityClean = (city || '').trim();
+  const isUAE = getGulfCountry(cityClean, state, country, fullChatText) === 'UAE';
+  const base = isUAE ? 'https://www.bayut.com' : 'https://www.bayut.sa/en';
+  const intentSeg = intent === 'rent' ? 'to-rent' : 'for-sale';
+
+  function bayutTypeSlug(t) {
+    if (!t) return 'property';
+    const v = t.toLowerCase();
+    if (v.includes('villa') || v.includes('luxury')) return 'villas';
+    if (v.includes('apartment') || v.includes('flat') || v.includes('condo')) return 'apartments';
+    if (v.includes('town') || v.includes('townhouse')) return 'townhouses';
+    if (v.includes('duplex')) return 'duplexes';
+    if (v.includes('penthouse')) return 'penthouses';
+    if (v.includes('studio')) return 'studio';
+    if (v.includes('land') || v.includes('lot')) return 'residential-land';
+    if (v.includes('farm') || v.includes('chalet')) return 'farms';
+    return 'property';
+  }
+
+  // Resolve specific district or city slug for Bayut URL
+  function resolveBayutLocationSlug(c, uae) {
+    const cl = (c || '').toLowerCase().trim();
+    if (uae) {
+      if (cl.includes('marina')) return 'dubai/dubai-marina';
+      if (cl.includes('downtown')) return 'dubai/downtown-dubai';
+      if (cl.includes('palm jumeirah') || cl === 'palm') return 'dubai/palm-jumeirah';
+      if (cl.includes('business bay')) return 'dubai/business-bay';
+      if (cl.includes('jvc') || cl.includes('village circle')) return 'dubai/jumeirah-village-circle-jvc';
+      if (cl.includes('jvt') || cl.includes('village triangle')) return 'dubai/jumeirah-village-triangle-jvt';
+      if (cl.includes('yas')) return 'abu-dhabi/yas-island';
+      if (cl.includes('saadiyat')) return 'abu-dhabi/saadiyat-island';
+      if (cl.includes('reem')) return 'abu-dhabi/al-reem-island';
+      if (cl.includes('al ain')) return 'al-ain';
+      if (cl.includes('abu dhabi')) return 'abu-dhabi';
+      if (cl.includes('ras al khaimah') || cl === 'rak') return 'ras-al-khaimah';
+      if (cl.includes('umm al quwain') || cl === 'uaq') return 'umm-al-quwain';
+      if (cl.includes('khor fakkan')) return 'sharjah/khor-fakkan';
+      if (cl.includes('dibba')) return 'fujairah/dibba';
+      return cl.replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    } else {
+      // Saudi Arabia
+      if (cl.includes('khobar')) return 'al-khobar';
+      if (cl.includes('khamis')) return 'khamis-mushait';
+      if (cl.includes('al ahsa') || cl.includes('hofuf')) return 'al-ahsa';
+      if (cl.includes('olaya')) return 'riyadh/al-olaya';
+      if (cl.includes('malqa')) return 'riyadh/al-malqa';
+      if (cl.includes('hittin')) return 'riyadh/hittin';
+      if (cl.includes('shati')) return 'jeddah/al-shati';
+      return cl.replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    }
+  }
+
+  const typeSlug = bayutTypeSlug(propType);
+  const citySlug = resolveBayutLocationSlug(cityClean, isUAE);
+  let bedsParam = '';
+  if (propBeds > 0 && typeSlug !== 'residential-land') {
+    bedsParam = propBeds === 1 ? '1-bedroom/' : `${propBeds}-bedrooms/`;
+  }
+
+  const url = `${base}/${intentSeg}/${typeSlug}/${citySlug}/${bedsParam}`.replace(/([^:])\/\/+/g, '$1/');
+  console.log(`[Bayut] Generated search URL: ${url} (Market=${isUAE ? 'UAE (bayut.com)' : 'Saudi (bayut.sa)'}, City="${cityClean}")`);
+  return url;
+}
+
+// ─── Start Bayut Apify Run for ANY Gulf City (UAE & Saudi Arabia) ─────────────
+async function startBayutRun(city, intent, propType = null, propBeds = 0, forceFresh = false, state = '', country = '', fullChatText = '') {
+  try {
+    const APIFY_TOKEN = process.env.APIFY_API_TOKEN?.trim();
+    if (!APIFY_TOKEN) {
+      console.error('[Bayut] CRITICAL ERROR: APIFY_API_TOKEN not set!');
+      return null;
+    }
+
+    const normCity = normalizeCityName(city);
+    const typeSlug = propType ? propType.toLowerCase().replace(/\s+/g, '_') : 'any';
+    const runKey = `bayut_${normCity.toLowerCase()}_${intent}_${typeSlug}`;
+
+    const existing = ACTIVE_APIFY_RUNS[runKey];
+    if (!forceFresh && existing && (Date.now() - existing.startedAt) < APIFY_RUN_TTL_MS) {
+      console.log(`[Bayut] ♻️ Reusing active Bayut run ${existing.runId} for key="${runKey}"`);
+      return existing.runId;
+    }
+
+    const searchUrl = buildBayutSearchUrl(city, intent, propType, propBeds, state, country, fullChatText);
+    console.log(`[Bayut] Starting memo23~apify-bayut-scraper | City=${city} | Intent=${intent} | Type=${propType || 'any'} | Beds=${propBeds || 'any'} | URL: ${searchUrl}`);
+
+    let runData = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const runRes = await fetch(
+          `https://api.apify.com/v2/acts/memo23~apify-bayut-scraper/runs?token=${APIFY_TOKEN}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              startUrls: [searchUrl],
+              fullDetails: false,
+              maxConcurrency: 5
+            })
+          }
+        );
+        runData = await runRes.json();
+        if (runData.data?.id) break;
+      } catch (fetchErr) {
+        console.warn(`[Bayut] Run start attempt ${attempt} failed: ${fetchErr.message}`);
+        if (attempt === 3) throw fetchErr;
+        await new Promise(r => setTimeout(r, 1000 * attempt));
+      }
+    }
+
+    if (!runData?.data?.id) {
+      console.error('[Bayut] API returned no run ID. Response:', JSON.stringify(runData, null, 2));
+      return null;
+    }
+
+    const runId = runData.data.id;
+    ACTIVE_APIFY_RUNS[runKey] = { runId, startedAt: Date.now(), intent, source: 'bayut' };
+    console.log(`[Bayut] ✅ Run started: ${runId} (key="${runKey}")`);
+    return runId;
+  } catch (e) {
+    console.error('[Bayut] startBayutRun error:', e.message);
     return null;
   }
 }
@@ -2012,17 +2193,22 @@ ${areasNotServed.length ? `
         }
       }
 
+      let detectedCountry = '';
       if (detectedCity) {
         const aiCorrection = await autocorrectCityWithAI(detectedCity, detectedState);
         if (aiCorrection?.city) {
           detectedCity = aiCorrection.city;
           if (aiCorrection.state) detectedState = aiCorrection.state;
+          if (aiCorrection.country) detectedCountry = aiCorrection.country;
         } else {
           detectedCity = normalizeCityName(detectedCity);
           if (!detectedState) {
             detectedState = resolveStateOrProvince(detectedCity, detectedState);
           }
         }
+      }
+      if (!detectedCountry && detectedCity) {
+        detectedCountry = getGulfCountry(detectedCity, detectedState, '', fullChatText);
       }
 
       // ── Change Search Criteria Flow (3 Buttons: 📍 City, 💰 Budget, 🛏️ Bedrooms) ──
@@ -2362,15 +2548,15 @@ CRITICAL INSTRUCTIONS:
                   }
                 });
                 const minPriceToScrape = (isShowMoreRequest && maxShownPrice > 0) ? (maxShownPrice + 1) : 0;
-                const GULF_CITIES = ['dubai', 'abu dhabi', 'sharjah', 'ajman', 'ras al khaimah', 'fujairah', 'umm al quwain', 'al ain', 'riyadh', 'jeddah', 'dammam', 'al khobar', 'makkah', 'madinah'];
-                const isGulf = GULF_CITIES.some(c => (detectedCity || '').toLowerCase().includes(c));
+                const isGulf = isGulfLocation(detectedCity, detectedState, detectedCountry, fullChatText);
 
-                if (!isGulf) {
+                if (isGulf) {
+                  console.log(`[Route] Gulf city detected (${detectedCity}, ${detectedCountry || 'Gulf'}) — triggering live Bayut scraper.`);
+                  apifyRunId = await startBayutRun(detectedCity, propIntent, propType, propBeds, isShowMoreRequest, detectedState, detectedCountry, fullChatText);
+                } else {
                   console.log(`[Route] 0 DB properties available/unseen (isShowMore=${isShowMoreRequest}) — starting live Apify search for City=${detectedCity} minPriceFloor=$${minPriceToScrape} Type=${propType}!`);
                   const resolvedState = resolveStateOrProvince(detectedCity, detectedState);
                   apifyRunId = await startApifyRun(detectedCity, resolvedState, propIntent, fullChatText, propBudget, propType, propBeds, propBaths, isShowMoreRequest, minPriceToScrape);
-                } else {
-                  console.log(`[Route] Gulf city detected (${detectedCity}) — skipping Zillow Apify to preserve credit.`);
                 }
 
                 if (apifyRunId) {
@@ -2412,17 +2598,17 @@ CRITICAL INSTRUCTIONS:
               propertyContext = (hasCRM ? crmPropertyContext : '') + (hasCRM && hasCache ? "\n\nADDITIONAL AREA LISTINGS:\n" : '') + (hasCache ? cachedCityContext : '');
             } else {
             // ============================================================
-            // PRIORITY 3: Live Apify search (Zillow)
+            // PRIORITY 3: Live Apify search (Zillow for US/CA, Bayut for Gulf)
             // ============================================================
-              const GULF_CITIES = ['dubai', 'abu dhabi', 'sharjah', 'ajman', 'ras al khaimah', 'fujairah', 'umm al quwain', 'al ain', 'riyadh', 'jeddah', 'dammam', 'al khobar', 'makkah', 'madinah'];
-              const isGulf = GULF_CITIES.some(c => (detectedCity || '').toLowerCase().includes(c));
+              const isGulf = isGulfLocation(detectedCity, detectedState, detectedCountry, fullChatText);
               const resolvedState = resolveStateOrProvince(detectedCity, detectedState);
 
-              if (!isGulf) {
+              if (isGulf) {
+                console.log(`[Route] PRIORITY 3: Gulf city "${detectedCity}" (${detectedCountry || 'Gulf'}) — triggering live Bayut scraper.`);
+                apifyRunId = await startBayutRun(detectedCity, propIntent, propType, propBeds, false, detectedState, detectedCountry, fullChatText);
+              } else {
                 console.log(`[Route] PRIORITY 3: No local data — starting live Apify run for City=${detectedCity} State=${resolvedState} Budget=${propBudget} Type=${propType}...`);
                 apifyRunId = await startApifyRun(detectedCity, resolvedState, propIntent, fullChatText, propBudget, propType, propBeds, propBaths);
-              } else {
-                console.log(`[Route] PRIORITY 3: Gulf city "${detectedCity}" — skipping Zillow Apify to save credit.`);
               }
 
               if (apifyRunId) {
